@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.23)
+project(ChessHelper CXX)
+
+# Note that the professor uses C++14 in Visual Studio 2022 and 2026
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# OpenCV config
+# Make sure you have the OpenCV binaries and headers installed
+find_package(OpenCV REQUIRED)
+
+add_executable(ChessHelper src/driver.cpp)
+target_link_libraries(ChessHelper ${OpenCV_LIBS})
+# TODO link include directories when added
