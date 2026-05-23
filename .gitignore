@@ -43,6 +43,7 @@
 *.app
 
 # Build directories
+bin/
 build/
 Build/
 build-*/
