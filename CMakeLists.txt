@@ -13,7 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Make sure you have the OpenCV binaries and headers installed
 find_package(OpenCV REQUIRED)
 
-add_executable(ChessHelper src/driver.cpp)
+add_executable(ChessHelper "src/driver.cpp" "src/utils.cpp")
 target_link_libraries(ChessHelper ${OpenCV_LIBS})
 # TODO link include directories when added
 
