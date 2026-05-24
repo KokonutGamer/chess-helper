@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -38,6 +39,17 @@ static inline cv::Vec2i botLeft(const cv::Mat &image, int r, int c) {
 static inline cv::Vec2i botRight(const cv::Mat &image, int r, int c) {
   cv::Vec2i mapping = {image.rows - r - 1, image.cols - c - 1};
   return mapping;
+}
+
+/**
+ * Computes the absolute value of the hyperbolic metric. Higher values score
+ * better (maximizes distance in one axis while minimizes distance in the
+ * other).
+ */
+static inline int hyperbolic(int r, int c, int targetR, int targetC) {
+  int distR = std::abs(r - targetR);
+  int distC = std::abs(c - targetC);
+  return std::abs(distR - distC);
 }
 
 /**

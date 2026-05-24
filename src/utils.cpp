@@ -5,6 +5,8 @@ namespace ch = ChessHelper;
 static ch::Optional<cv::Vec2i> findCorner(const cv::Mat &image, int minR,
                                           int maxR, int minC, int maxC,
                                           const ch::Mapping &mapper) {
+
+  // Base case, traverses the smallest region to find a value
   if ((maxR - minR <= 2) && (maxC - minC <= 2)) {
     for (int r = minR; r < maxR; r++) {
       for (int c = minC; c < maxC; c++) {
@@ -21,20 +23,39 @@ static ch::Optional<cv::Vec2i> findCorner(const cv::Mat &image, int minR,
   int midR = minR + (maxR - minR) / 2 + 1;
   int midC = minC + (maxC - minC) / 2 + 1;
 
+  // Because this function maps values (so we don't have to write three other
+  // separate functions to perform the corner matching), the order is what is
+  // expected from a top-left-only implementation.
+
+  // always return the top-left result
   ch::Optional<cv::Vec2i> topLeft =
       findCorner(image, minR, midR, minC, midC, mapper);
   if (topLeft.second) {
     return topLeft;
   }
 
+  // For top-right and bot-left, we must compare them based on the hyperbolic
+  // metric. This maximizes distance in either x or y while minimizes distance
+  // in the other.
   ch::Optional<cv::Vec2i> topRight =
       findCorner(image, minR, midR, midC, maxC, mapper);
+  ch::Optional<cv::Vec2i> botLeft =
+      findCorner(image, midR, maxR, minC, midC, mapper);
+  if (topRight.second && botLeft.second) {
+    cv::Vec2i target = mapper(image, minR, minC);
+
+    int trScore = ch::hyperbolic(topRight.first[0], topRight.first[1],
+                                 target[0], target[1]);
+    int blScore = ch::hyperbolic(botLeft.first[0], botLeft.first[1], target[0],
+                                 target[1]);
+
+    return (trScore > blScore) ? topRight : botLeft;
+  }
+
   if (topRight.second) {
     return topRight;
   }
 
-  ch::Optional<cv::Vec2i> botLeft =
-      findCorner(image, midR, maxR, minC, midC, mapper);
   if (botLeft.second) {
     return botLeft;
   }
@@ -42,43 +63,6 @@ static ch::Optional<cv::Vec2i> findCorner(const cv::Mat &image, int minR,
   // worst case bottom right (can be null)
   ch::Optional<cv::Vec2i> botRight =
       findCorner(image, midR, maxR, midC, maxC, mapper);
-  return botRight;
-}
-
-static ch::Optional<cv::Vec2i> findTopLeft(cv::Mat &image, int minR, int maxR,
-                                           int minC, int maxC) {
-  if ((maxR - minR <= 2) && (maxC - minC <= 2)) {
-    for (int r = minR; r < maxR; r++) {
-      for (int c = minC; c < maxC; c++) {
-        if (image.at<unsigned char>(r, c) == 255) {
-          cv::Vec2i val = {r, c};
-          return ch::value<cv::Vec2i>(std::move(val));
-        }
-      }
-    }
-    return ch::empty<cv::Vec2i>();
-  }
-
-  int midR = minR + (maxR - minR) / 2 + 1;
-  int midC = minC + (maxC - minC) / 2 + 1;
-
-  ch::Optional<cv::Vec2i> topLeft = findTopLeft(image, minR, midR, minC, midC);
-  if (topLeft.second) {
-    return topLeft;
-  }
-
-  ch::Optional<cv::Vec2i> topRight = findTopLeft(image, minR, midR, midC, maxC);
-  if (topRight.second) {
-    return topRight;
-  }
-
-  ch::Optional<cv::Vec2i> botLeft = findTopLeft(image, midR, maxR, minC, midC);
-  if (botLeft.second) {
-    return botLeft;
-  }
-
-  // worst case bottom right (can be null)
-  ch::Optional<cv::Vec2i> botRight = findTopLeft(image, midR, maxR, midC, maxC);
   return botRight;
 }
 
