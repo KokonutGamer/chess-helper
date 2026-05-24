@@ -46,7 +46,7 @@ int main() {
   std::cout << "Min: " << min << std::endl;
   std::cout << "Max: " << max << std::endl;
 
-  cv::threshold(corners, corners, max * 0.1, 255, cv::THRESH_BINARY);
+  cv::threshold(corners, corners, max * 0.05, 255, cv::THRESH_BINARY);
   corners.convertTo(corners, CV_8U);
   std::cout << "New corner type: " << corners.type() << std::endl;
 
