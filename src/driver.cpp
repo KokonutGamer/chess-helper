@@ -7,6 +7,7 @@
 #include "ChessHelper/utils.h"
 
 const int NUM_DOWNSAMPLES = 2;
+const int MARGIN = 0; // in pixels
 
 namespace ch = ChessHelper;
 
@@ -32,36 +33,45 @@ int main() {
   cv::Mat corners = cv::Mat::zeros(gray.size(), gray.type());
   cv::cornerHarris(gray, corners, 3, 7, 0.05);
 
-  float min = std::numeric_limits<float>::max();
   float max = std::numeric_limits<float>::min();
   corners.forEach<float>([&](float &pixel, const int *position) {
-    if (pixel < min) {
-      min = pixel;
-    }
     if (pixel > max) {
       max = pixel;
     }
   });
 
-  std::cout << "Min: " << min << std::endl;
-  std::cout << "Max: " << max << std::endl;
-
   cv::threshold(corners, corners, max * 0.05, 255, cv::THRESH_BINARY);
   corners.convertTo(corners, CV_8U);
-  std::cout << "New corner type: " << corners.type() << std::endl;
 
-  cv::imshow("Thresholded", corners);
-  cv::waitKey(0);
+  ch::Optional<std::vector<cv::Point2i>> outer = ch::findCorners(corners);
 
-  ch::Optional<std::vector<cv::Vec2i>> outer = ch::findCorners(corners);
-
-  if (outer.second) {
-    std::cout << "Found corners: " << outer.first[0];
-    for (int i = 1; i < outer.first.size(); i++) {
-      std::cout << ", " << outer.first[i];
-    }
-    std::cout << std::endl;
+  if (!outer.second) {
+    std::cout << "Could not find corners" << std::endl;
+    return EXIT_SUCCESS;
   }
+
+  // we need these points as a float for the perspective transform
+  std::vector<cv::Point2f> points(outer.first.begin(), outer.first.end());
+  std::cout << "Found corners: " << points[0];
+  for (int i = 1; i < points.size(); i++) {
+    std::cout << ", " << points[i];
+  }
+  std::cout << std::endl;
+
+  // must match source point order (TL, TR, BL, BR)
+  std::vector<cv::Point2f> destination = {
+      {MARGIN, MARGIN},
+      {MARGIN, static_cast<float>(gray.cols - MARGIN - 1)},
+      {static_cast<float>(gray.rows - MARGIN - 1), MARGIN},
+      {static_cast<float>(gray.cols - MARGIN - 1),
+       static_cast<float>(gray.cols - MARGIN - 1)}};
+
+  cv::Mat M = cv::getPerspectiveTransform(points, destination);
+  cv::Mat warped;
+  cv::warpPerspective(gray, warped, M, gray.size());
+
+  cv::imshow("Warped", warped);
+  cv::waitKey(0);
 
   return EXIT_SUCCESS;
 }
