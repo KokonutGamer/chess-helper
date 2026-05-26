@@ -94,3 +94,4 @@ CMakeUserPresets.json
 #cmake-build-*
 
 .vscode/
+.idea/
