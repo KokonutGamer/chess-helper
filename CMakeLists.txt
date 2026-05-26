@@ -14,7 +14,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(OpenCV REQUIRED)
 
 add_executable(ChessHelper "src/driver.cpp" "src/utils.cpp" "src/matching.cpp")
-target_link_libraries(ChessHelper ${OpenCV_LIBS})
-# TODO link include directories when added
 
+# MSVC's <cmath> only exposes M_PI when _USE_MATH_DEFINES is defined first
+target_compile_definitions(ChessHelper PRIVATE _USE_MATH_DEFINES)
+
+target_link_libraries(ChessHelper ${OpenCV_LIBS})
 target_include_directories(ChessHelper PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+# Set the working directory for debugging in Visual Studio to the project root
+set_target_properties(ChessHelper PROPERTIES
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)
