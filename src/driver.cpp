@@ -88,6 +88,7 @@ int main() {
   int smallAxis = std::min(warped.cols - 1, warped.rows - 1);
   warped = warped(cv::Rect(0, 0, smallAxis, smallAxis));
 
+  cv::namedWindow("Warped", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
   cv::imshow("Warped", warped);
   cv::waitKey(0);
 
