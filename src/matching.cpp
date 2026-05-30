@@ -243,8 +243,40 @@ void ChessHelper::PieceIdentifier::calibrate(
 }
 
 void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
+  auto cells = sliceBoard(image);
+
+  cv::Mat allPieces[NUM_PIECE_TYPES] = {
+      // King
+    cells[0][4],
+      // Queen
+    cells[0][3],
+      // Rook
+    cells[0][0],
+      // Bishop
+    cells[0][2],
+      // Knight
+    cells[0][1],
+      // Pawn
+    cells[1][0],
+  };
+  this->calibrate(allPieces);
+
+  // For testing, print out all the pieces.
+  // TODO: Remove.
+  for (int i = 0; i < CELLS_PER_SIDE; i++) {
+    for (int j = 0; j < CELLS_PER_SIDE; j++) {
+      std::cout << static_cast<int>(
+          identifyPiece(cells[i][j]).first.first);
+    }
+
+    std::cout << std::endl;
+  }
+}
+
+std::vector<std::vector<cv::Mat>>
+ChessHelper::PieceIdentifier::sliceBoard(const cv::Mat &image) {
   if (image.rows != image.cols) {
-    throw new std::runtime_error("calibrate received a non-square input!");
+    throw new std::runtime_error("sliceBoard received a non-square input!");
   }
 
   // The board needs to be a multiple of CELLS_PER_SIDE
@@ -257,34 +289,14 @@ void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
 
   int cellSize = board.rows / CELLS_PER_SIDE;
 
-  auto pieceAtIdx = [&](int x, int y) {
-    return cv::Rect(x * cellSize, y * cellSize, cellSize, cellSize);
-  };
+  std::vector<std::vector<cv::Mat>> cells(CELLS_PER_SIDE, std::vector<cv::Mat>(CELLS_PER_SIDE));
 
-  cv::Mat allPieces[NUM_PIECE_TYPES] = {
-      // King
-      board(pieceAtIdx(4, 0)),
-      // Queen
-      board(pieceAtIdx(3, 0)),
-      // Rook
-      board(pieceAtIdx(0, 0)),
-      // Bishop
-      board(pieceAtIdx(2, 0)),
-      // Knight
-      board(pieceAtIdx(1, 0)),
-      // Pawn
-      board(pieceAtIdx(0, 1)),
-  };
-  this->calibrate(allPieces);
-
-  // For testing, print out all the pieces.
-  // TODO: Remove.
-  for (int i = 0; i < CELLS_PER_SIDE; i++) {
-    for (int j = 0; j < CELLS_PER_SIDE; j++) {
-      std::cout << static_cast<int>(
-          identifyPiece(board(pieceAtIdx(j, i))).first.first);
+  for (int row = 0; row < CELLS_PER_SIDE; row++) {
+    for (int col = 0; col < CELLS_PER_SIDE; col++) {
+      // Rect is (x, y)
+      cells[row][col] = board(cv::Rect(col * cellSize, row * cellSize, cellSize, cellSize));
     }
-
-    std::cout << std::endl;
   }
+
+  return cells;
 }

@@ -79,6 +79,15 @@ public:
    */
   void calibrate(const cv::Mat &image);
 
+  /**
+   * Slices a square grayscale image (CV_8U) containing only
+   * the entire chessboard into individual images for each cell.
+   * @param image is the chess board image to slice.
+   * @return a nested array of board cell images, organized
+   *         as images[row][col].
+   */
+  static std::vector<std::vector<cv::Mat>> sliceBoard(const cv::Mat &image);
+
 private:
   bool calibrated = false;
 
