@@ -1,6 +1,7 @@
 #include "ChessHelper/matching.h"
 
 #include <numeric>
+#include <sys/stat.h>
 
 namespace ch = ChessHelper;
 
@@ -200,7 +201,8 @@ float sadAtOffset(const float histogram1[ch::MATCH_HISTOGRAM_BINS],
 }
 
 ch::PieceIdentifier::PieceIdentifier(std::string calibrationDir) {
-  // TODO: Read from file.
+  this->calibrationDir = calibrationDir;
+  this->loadData();
 }
 
 bool ch::PieceIdentifier::isCalibrated() const { return this->calibrated; }
@@ -258,7 +260,7 @@ void ChessHelper::PieceIdentifier::calibrate(
   }
 
   this->calibrated = true;
-  // TODO: Write to file.
+  this->saveData();
 }
 
 void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
@@ -319,4 +321,59 @@ ChessHelper::PieceIdentifier::sliceBoard(const cv::Mat &image) {
   }
 
   return cells;
+}
+
+void ChessHelper::PieceIdentifier::loadData() {
+  struct stat dir{};
+  if (stat(this->calibrationDir.c_str(), &dir) != 0) {
+    // Directory doesn't exist, nothing we can load.
+    return;
+  }
+
+  std::string calibrationPath = this->calibrationDir + "/calibration.dat";
+  FILE *calibrationFile = fopen(calibrationPath.c_str(), "rb");
+  if (calibrationFile == nullptr) {
+    // File doesn't exist.
+    return;
+  }
+
+  // SAFETY: To my knowledge, a float array has the exact same
+  //         layout (4 bytes per item, 4 byte alignment, no padding)
+  //         across x86_64 and arm64, and Linux and Windows.
+  fread(&this->histogramsByPiece, sizeof(float),
+        MATCH_HISTOGRAM_BINS * NUM_PIECE_TYPES, calibrationFile);
+
+  fclose(calibrationFile);
+
+  // We're now calibrated.
+  this->calibrated = true;
+}
+
+void ChessHelper::PieceIdentifier::saveData() const {
+  if (!this->calibrated) {
+    throw std::runtime_error(
+        "saveData called on a non-calibrated PieceIdentifier!");
+  }
+
+  struct stat dir{};
+  if (stat(this->calibrationDir.c_str(), &dir) != 0) {
+    // Directory doesn't exist, we need to create it.
+    if (mkdir(this->calibrationDir.c_str(), 0777) != 0) {
+      throw std::runtime_error("Failed to create calibration directory!");
+    }
+  }
+
+  std::string calibrationPath = this->calibrationDir + "/calibration.dat";
+  FILE *calibrationFile = fopen(calibrationPath.c_str(), "wb");
+  if (calibrationFile == nullptr) {
+    throw std::runtime_error("Failed to write into calibration file!");
+  }
+
+  // SAFETY: To my knowledge, a float array has the exact same
+  //         layout (4 bytes per item, 4 byte alignment, no padding)
+  //         across x86_64 and arm64, and Linux and Windows.
+  fwrite(&this->histogramsByPiece, sizeof(float),
+         MATCH_HISTOGRAM_BINS * NUM_PIECE_TYPES, calibrationFile);
+
+  fclose(calibrationFile);
 }

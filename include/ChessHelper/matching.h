@@ -101,11 +101,28 @@ public:
   static std::vector<std::vector<cv::Mat>> sliceBoard(const cv::Mat &image);
 
 private:
+  /**
+   * Loads the data stored in the calibration directory (if it exists).
+   * Skips loading if no data exists.
+   * Aborts the program on failure.
+   */
+  void loadData();
+
+  /**
+   * Saves the calibration data into the calibration directory,
+   * creating it if it doesn't already exist.
+   * Aborts the program on failure, or if the identifier
+   * isn't already calibrated.
+   */
+  void saveData() const;
+
+  std::string calibrationDir;
+
   bool calibrated = false;
 
   /**
    * Undefined if calibrated == false.
    */
-  float histogramsByPiece[NUM_PIECE_TYPES][MATCH_HISTOGRAM_BINS];
+  float histogramsByPiece[NUM_PIECE_TYPES][MATCH_HISTOGRAM_BINS]{};
 };
 } // namespace ChessHelper
