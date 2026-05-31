@@ -1,3 +1,4 @@
+#include "ChessHelper/engine.h"
 #include "ChessHelper/matching.h"
 
 #include <iostream>
@@ -93,7 +94,29 @@ void commandInterface() {
               << std::endl;
     std::cin >> selection;
 
-    // TODO: Implement
+    if (selection == "c") {
+      pieceID.calibrate(warped);
+
+      std::cout << "Calibration complete." << std::endl;
+    } else if (selection == "a") {
+      auto pieces = pieceID.identifyBoard(warped);
+      auto fen = ch::fenEncode(pieces, 'w');
+
+      std::cout << "FEN: " << fen << std::endl;
+      std::cout << "Use an online viewer such as "
+                   "https://fujibit.live/chess/fen-viewer/ to visualize."
+                << std::endl;
+    } else {
+      // Invalid selection.
+      continue;
+    }
+
+    std::cout << "Would you like to quit (y/n):" << std::endl;
+    std::cin >> selection;
+
+    if (selection == "y") {
+      break;
+    }
   }
 }
 

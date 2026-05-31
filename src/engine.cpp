@@ -37,7 +37,8 @@ std::string ChessHelper::fenEncode(
     }
   }
 
-  result += " " + std::to_string(activeColor);
+  result += " ";
+  result += activeColor;
   // Dummy values.
   result += " - - 1 1";
 

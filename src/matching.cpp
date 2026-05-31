@@ -232,6 +232,25 @@ ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
   return ch::value(std::make_pair(bestPiece, ChessColor::White));
 }
 
+std::vector<std::vector<ChessHelper::Optional<
+    std::pair<ChessHelper::ChessPiece, ChessHelper::ChessColor>>>>
+ChessHelper::PieceIdentifier::identifyBoard(const cv::Mat &image) const {
+  auto cells = sliceBoard(image);
+
+  std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>>
+      identifiedCells(CELLS_PER_SIDE,
+                      std::vector<Optional<std::pair<ChessPiece, ChessColor>>>(
+                          CELLS_PER_SIDE));
+
+  for (int row = 0; row < CELLS_PER_SIDE; row++) {
+    for (int col = 0; col < CELLS_PER_SIDE; col++) {
+      identifiedCells[row][col] = this->identifyPiece(cells[row][col]);
+    }
+  }
+
+  return identifiedCells;
+}
+
 void ChessHelper::PieceIdentifier::calibrate(
     const cv::Mat allPieces[NUM_PIECE_TYPES]) {
   for (int i = 0; i < NUM_PIECE_TYPES; i++) {
@@ -275,7 +294,7 @@ void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
 std::vector<std::vector<cv::Mat>>
 ChessHelper::PieceIdentifier::sliceBoard(const cv::Mat &image) {
   if (image.rows != image.cols) {
-    throw new std::runtime_error("sliceBoard received a non-square input!");
+    throw std::runtime_error("sliceBoard received a non-square input!");
   }
 
   // The board needs to be a multiple of CELLS_PER_SIDE
