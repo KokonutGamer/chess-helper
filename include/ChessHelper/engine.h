@@ -19,7 +19,9 @@ constexpr char PIECE_TO_FEN[NUM_PIECE_TYPES] = {'K', 'Q', 'R', 'B', 'N', 'P'};
  *                    color the chess engine tries to find the next move for.
  * @return the full FEN string that can be sent to the chess engine.
  */
-std::string fenEncode(std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board, char activeColor);
+std::string fenEncode(
+    std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board,
+    char activeColor);
 
 /**
  * Sends a request to the chess engine API and returns the best move it finds.
@@ -27,7 +29,10 @@ std::string fenEncode(std::vector<std::vector<Optional<std::pair<ChessPiece, Che
  * cells.
  * @param activeColor should be 'b' (black) or 'w' (white), and dictates which
  *                    color the chess engine tries to find the next move for.
- * @return the best move as [fromRow, fromCol, toRow, toCol] (or empty if an error occurred).
+ * @return the best move as [fromRow, fromCol, toRow, toCol] (or empty if an
+ * error occurred).
  */
-Optional<std::array<int, 4>> findMove(std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board, char activeColor);
-}
+Optional<std::array<int, 4>> findMove(
+    std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board,
+    char activeColor);
+} // namespace ChessHelper

@@ -16,7 +16,7 @@ const int MARGIN = 0; // in pixels
 // -- Keybindings --
 const int KEY_SETUP = 's';
 const int KEY_ANALYZE = ' ';
-const int KEY_QUIT = 27; //this means 'esc' key btw
+const int KEY_QUIT = 27; // this means 'esc' key btw
 
 namespace ch = ChessHelper;
 
@@ -33,7 +33,9 @@ int main() {
   while (true) {
     std::string selection;
 
-    std::cout << "Type 'v' to access the video interface (requires a live videocamera) or 'c' to access the command-line interface:" << std::endl;
+    std::cout << "Type 'v' to access the video interface (requires a live "
+                 "videocamera) or 'c' to access the command-line interface:"
+              << std::endl;
     std::cin >> selection;
 
     if (selection == "v") {
@@ -67,7 +69,8 @@ void commandInterface() {
 
     auto boardRes = setupBoard(currFrame);
     if (!boardRes.second) {
-      std::cerr << "Could not setup board (not all corners could be found)." << std::endl;
+      std::cerr << "Could not setup board (not all corners could be found)."
+                << std::endl;
       exit(EXIT_FAILURE);
     }
     cv::Mat M = boardRes.first;
@@ -76,10 +79,18 @@ void commandInterface() {
     cv::imwrite("ch-warped.png", warped);
     std::cout << "Wrote warped image to ch-warped.png" << std::endl;
 
-    std::cout << std::endl << "Board calibration involves loading an image of a chess board in a starting layout so that the piece identifier can learn to identify them." << std::endl;
-    std::cout << "Board analysis will use the piece identifier to print out the board's current arrangement." << std::endl;
+    std::cout << std::endl
+              << "Board calibration involves loading an image of a chess board "
+                 "in a starting layout so that the piece identifier can learn "
+                 "to identify them."
+              << std::endl;
+    std::cout << "Board analysis will use the piece identifier to print out "
+                 "the board's current arrangement."
+              << std::endl;
 
-    std::cout << "Type 'c' to calibrate the board, 'a' to analyze the board, or 'q' to quit:" << std::endl;
+    std::cout << "Type 'c' to calibrate the board, 'a' to analyze the board, "
+                 "or 'q' to quit:"
+              << std::endl;
     std::cin >> selection;
 
     // TODO: Implement
@@ -131,13 +142,14 @@ void videoInterface() {
         // Success.
         M = mat.first;
 
-        // if there was an arrow drawn previously then it was drawn for a now outdated
-        // board state, so we need to clear it
+        // if there was an arrow drawn previously then it was drawn for a now
+        // outdated board state, so we need to clear it
         arrowOverlay.release();
 
         // TODO: Maybe draw corner points onto arrowOverlay using inverse(M)?
       } else {
-        std::cerr << "Could not setup board (not all corners could be found)." << std::endl;
+        std::cerr << "Could not setup board (not all corners could be found)."
+                  << std::endl;
       }
     } else if (key == KEY_ANALYZE) {
       analyzeBoard(currFrame, pieceID, M, arrowOverlay);
@@ -223,7 +235,8 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
 /**
  * Identifies all the pieces on the board, sends them to the chess engine,
  * and draws an arrow to indicate the move on the screen.
- * If the piece identifier isn't already calibrated, this will abort the program.
+ * If the piece identifier isn't already calibrated, this will abort the
+ * program.
  * @param image is the image to identify pieces on. It should be the same
  *              image the perspective transform was extracted from (i.e., not
  *              warped).
@@ -232,12 +245,13 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
  * @param arrowOverlay is an image with the same shape as `image`, and which the
  *                     arrow will be drawn into by this function.
  */
-void analyzeBoard(const cv::Mat& image,
-                  const ch::PieceIdentifier& pid,
-                  const cv::Mat& M,
-                  cv::Mat& arrowOverlay) {
+void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
+                  const cv::Mat &M, cv::Mat &arrowOverlay) {
   if (!pid.isCalibrated()) {
-    std::cerr << "Cannot analyze board: enter command-line mode and calibrate first (or check that there's a calibration folder in your working directory)." << std::endl;
+    std::cerr << "Cannot analyze board: enter command-line mode and calibrate "
+                 "first (or check that there's a calibration folder in your "
+                 "working directory)."
+              << std::endl;
     exit(EXIT_FAILURE);
   }
 

@@ -68,9 +68,10 @@ ch::Optional<std::array<int, 4>> ChessHelper::findMove(
   // Formatted like "bestmove f6e4"
   // ['a', 'f'] is a column, [1, 8] is a row.
   int fromCol = static_cast<int>(res->body[searchIdx + search.size()] - 'a');
-  int fromRow =static_cast<int>(res->body[searchIdx + search.size() + 1] - '1');
+  int fromRow =
+      static_cast<int>(res->body[searchIdx + search.size() + 1] - '1');
   int toCol = static_cast<int>(res->body[searchIdx + search.size() + 2] - 'a');
-  int toRow =static_cast<int>(res->body[searchIdx + search.size() + 3] - '1');
+  int toRow = static_cast<int>(res->body[searchIdx + search.size() + 3] - '1');
 
   std::array<int, 4> move = {fromRow, fromCol, toRow, toCol};
   return value(move);
