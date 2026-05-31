@@ -13,7 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Make sure you have the OpenCV binaries and headers installed
 find_package(OpenCV REQUIRED)
 
-add_executable(ChessHelper "src/driver.cpp" "src/utils.cpp" "src/matching.cpp")
+add_executable(ChessHelper "src/driver.cpp" "src/utils.cpp" "src/matching.cpp" "src/engine.cpp")
 
 # MSVC's <cmath> only exposes M_PI when _USE_MATH_DEFINES is defined first
 target_compile_definitions(ChessHelper PRIVATE _USE_MATH_DEFINES)
