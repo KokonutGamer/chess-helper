@@ -61,6 +61,18 @@ public:
   identifyPiece(const cv::Mat &image) const;
 
   /**
+   * Runs piece identification on every cell in the chess board.
+   * The input image must be a square grayscale image
+   * (CV_8U) containing only the entire chessboard, with pieces
+   * arranged in a default chess configuration.
+   * @param image is the chess board image to run identification on.
+   * @return is the output board, in board[row][column] order, where empty
+   *         values represent no piece detected.
+   */
+  std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>>
+  identifyBoard(const cv::Mat &image) const;
+
+  /**
    * Extracts the shapes of every chess piece and saves them
    * to a calibration file, to be used for later identification.
    * @param allPieces is a list of images of different chess pieces.
@@ -78,6 +90,15 @@ public:
    * @param image is the chess board image to calibrate with.
    */
   void calibrate(const cv::Mat &image);
+
+  /**
+   * Slices a square grayscale image (CV_8U) containing only
+   * the entire chessboard into individual images for each cell.
+   * @param image is the chess board image to slice.
+   * @return a nested array of board cell images, organized
+   *         as images[row][col].
+   */
+  static std::vector<std::vector<cv::Mat>> sliceBoard(const cv::Mat &image);
 
 private:
   bool calibrated = false;
