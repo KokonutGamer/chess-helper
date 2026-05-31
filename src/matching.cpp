@@ -3,6 +3,10 @@
 #include <numeric>
 #include <sys/stat.h>
 
+#if defined(_WIN32)
+#include <direct.h>
+#endif
+
 namespace ch = ChessHelper;
 
 /**
@@ -358,7 +362,15 @@ void ChessHelper::PieceIdentifier::saveData() const {
   struct stat dir{};
   if (stat(this->calibrationDir.c_str(), &dir) != 0) {
     // Directory doesn't exist, we need to create it.
-    if (mkdir(this->calibrationDir.c_str(), 0777) != 0) {
+    int nError = 0;
+
+    #if defined(_WIN32)
+    nError = _mkdir(this->calibrationDir.c_str());
+    #else
+    nError = mkdir(this->calibrationDir.c_str(), 0777);
+    #endif
+
+    if (nError != 0) {
       throw std::runtime_error("Failed to create calibration directory!");
     }
   }
