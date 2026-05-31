@@ -104,7 +104,7 @@ void commandInterface() {
 
       std::cout << "FEN: " << fen << std::endl;
       std::cout << "Use an online viewer such as "
-                   "https://fujibit.live/chess/fen-viewer/ to visualize."
+                   "https://scriptchess.com/tools/fen-visualizer to visualize."
                 << std::endl;
     } else {
       // Invalid selection.
