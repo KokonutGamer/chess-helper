@@ -110,3 +110,16 @@ ch::Optional<std::vector<cv::Point2i>> ch::findCorners(cv::Mat &image) {
 
   return ch::value(std::move(corners));
 }
+
+cv::Mat ChessHelper::grayWarp(const cv::Mat &image, const cv::Mat &transform) {
+  cv::Mat warped;
+  cv::cvtColor(image, warped, cv::COLOR_BGR2GRAY);
+
+  cv::warpPerspective(warped, warped, transform, warped.size());
+
+  // The image might not be perfectly square (off by a pixel).
+  int smallAxis = std::min(warped.cols - 1, warped.rows - 1);
+  warped = warped(cv::Rect(0, 0, smallAxis, smallAxis));
+
+  return warped;
+}

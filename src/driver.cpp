@@ -14,26 +14,88 @@ const int NUM_DOWNSAMPLES = 2;
 const int MARGIN = 0; // in pixels
 
 // -- Keybindings --
-const int KEY_CALIBRATE = 'c';
+const int KEY_SETUP = 's';
 const int KEY_ANALYZE = ' ';
 const int KEY_QUIT = 27; //this means 'esc' key btw
 
 namespace ch = ChessHelper;
 
-void calibrateBoard(const cv::Mat &currFrame, 
-                    ch::PieceIdentifier &pid, 
-                    cv::Mat& M, 
-                    cv::Mat &arrowOverlay);
+ch::Optional<cv::Mat> setupBoard(const cv::Mat &image);
 
-void analyzeBoard(const cv::Mat &currFrame, const ch::PieceIdentifier &pid,
+void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
                   const cv::Mat &M, cv::Mat &arrowOverlay);
 
+void videoInterface();
+
+void commandInterface();
+
 int main() {
+  while (true) {
+    std::string selection;
+
+    std::cout << "Type 'v' to access the video interface (requires a live videocamera) or 'c' to access the command-line interface:" << std::endl;
+    std::cin >> selection;
+
+    if (selection == "v") {
+      videoInterface();
+    } else if (selection == "c") {
+      commandInterface();
+    } else {
+      // Invalid selection.
+      continue;
+    }
+
+    // The program is done.
+    return EXIT_SUCCESS;
+  }
+}
+
+/**
+ * Gives the user a command-line menu to try
+ * the program's functionality.
+ */
+void commandInterface() {
+  ch::PieceIdentifier pieceID("./calibration");
+
+  while (true) {
+    std::string selection;
+
+    std::cout << "Enter a board image to load:" << std::endl;
+    std::cin >> selection;
+
+    cv::Mat currFrame = cv::imread(selection);
+
+    auto boardRes = setupBoard(currFrame);
+    if (!boardRes.second) {
+      std::cerr << "Could not setup board (not all corners could be found)." << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    cv::Mat M = boardRes.first;
+
+    cv::Mat warped = ch::grayWarp(currFrame, M);
+    cv::imwrite("ch-warped.png", warped);
+    std::cout << "Wrote warped image to ch-warped.png" << std::endl;
+
+    std::cout << std::endl << "Board calibration involves loading an image of a chess board in a starting layout so that the piece identifier can learn to identify them." << std::endl;
+    std::cout << "Board analysis will use the piece identifier to print out the board's current arrangement." << std::endl;
+
+    std::cout << "Type 'c' to calibrate the board, 'a' to analyze the board, or 'q' to quit:" << std::endl;
+    std::cin >> selection;
+
+    // TODO: Implement
+  }
+}
+
+/**
+ * Displays an interactive video feed of the board
+ * and best moves.
+ */
+void videoInterface() {
   // -- setup --
   cv::VideoCapture videoCap(0);
   if (!videoCap.isOpened()) {
     std::cerr << "Could not open your camera." << std::endl;
-    return EXIT_FAILURE;
+    exit(EXIT_FAILURE);
   }
 
   cv::namedWindow("Chess Cheater 9000",
@@ -63,8 +125,20 @@ int main() {
     int key = cv::waitKey(1);
     if (key == KEY_QUIT) {
       break;
-    } else if (key == KEY_CALIBRATE) {
-      calibrateBoard(currFrame, pieceID, M, arrowOverlay);
+    } else if (key == KEY_SETUP) {
+      auto mat = setupBoard(currFrame);
+      if (mat.second) {
+        // Success.
+        M = mat.first;
+
+        // if there was an arrow drawn previously then it was drawn for a now outdated
+        // board state, so we need to clear it
+        arrowOverlay.release();
+
+        // TODO: Maybe draw corner points onto arrowOverlay using inverse(M)?
+      } else {
+        std::cerr << "Could not setup board (not all corners could be found)." << std::endl;
+      }
     } else if (key == KEY_ANALYZE) {
       analyzeBoard(currFrame, pieceID, M, arrowOverlay);
     }
@@ -72,20 +146,18 @@ int main() {
 
   videoCap.release();
   cv::destroyAllWindows();
-
-  return EXIT_SUCCESS;
 }
 
-// Gabe's logic for calibrating the board. This will be called when the user
-// presses the calibrate key, and it will find the corners of the chess board
-// and warp the perspective so that we have a top-down view of the board, which
-// is necessary for piece identification.
-void calibrateBoard(const cv::Mat &currFrame, 
-                    ch::PieceIdentifier &pid, 
-                    cv::Mat& M, 
-                    cv::Mat& arrowOverlay) {
+/**
+ * Extracts the corner points from the input chess board image, and if they
+ * can be found, returns a perspective transform matrix to make the image
+ * contain only the entire chessboard.
+ * @param image is the image to analyze.
+ * @return a perspective transform matrix (or empty if one couldn't be found).
+ */
+ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
   cv::Mat grayOriginal;
-  cv::cvtColor(currFrame, grayOriginal, cv::COLOR_BGR2GRAY);
+  cv::cvtColor(image, grayOriginal, cv::COLOR_BGR2GRAY);
 
   // found that downsampling is pretty quick and can help with speeding up
   // computation
@@ -117,7 +189,7 @@ void calibrateBoard(const cv::Mat &currFrame,
 
   if (!outer.second) {
     std::cout << "Calibration failed: Could not find corners" << std::endl;
-    return;
+    return ch::empty<cv::Mat>();
   }
 
   // we need these points as a float for the perspective transform
@@ -145,39 +217,29 @@ void calibrateBoard(const cv::Mat &currFrame,
       {static_cast<float>(grayOriginal.cols - MARGIN - 1),
        static_cast<float>(grayOriginal.cols - MARGIN - 1)}};
 
-  M = cv::getPerspectiveTransform(points, destination);
-  // This is CV_8U (because grayOrigial is CV_8U).
-  cv::Mat warped;
-  cv::warpPerspective(grayOriginal, warped, M, grayOriginal.size());
-
-  // The image might not be perfectly square (off by a pixel).
-  int smallAxis = std::min(warped.cols - 1, warped.rows - 1);
-  warped = warped(cv::Rect(0, 0, smallAxis, smallAxis));
-
-  pid.calibrate(warped);
-
-  // if there was an arrow drawn previously then it was drawn for a now outdated
-  // board state, so we need to clear it
-  arrowOverlay.release();
-
-  std::cout << "Calibration complete." << std::endl;
+  return ch::value(cv::getPerspectiveTransform(points, destination));
 }
 
-
-// Jonah's Piece identification logic will walk the grid and determine pieces
-// and then feed the chess engine and determine what move to make. Then, draw
-// the move on the flattened board.
-void analyzeBoard(const cv::Mat& currFrame,
+/**
+ * Identifies all the pieces on the board, sends them to the chess engine,
+ * and draws an arrow to indicate the move on the screen.
+ * If the piece identifier isn't already calibrated, this will abort the program.
+ * @param image is the image to identify pieces on. It should be the same
+ *              image the perspective transform was extracted from (i.e., not
+ *              warped).
+ * @param pid is the piece identifier to use (must be calibrated).
+ * @param M is the perspective transform matrix to correct the input image.
+ * @param arrowOverlay is an image with the same shape as `image`, and which the
+ *                     arrow will be drawn into by this function.
+ */
+void analyzeBoard(const cv::Mat& image,
                   const ch::PieceIdentifier& pid,
                   const cv::Mat& M,
                   cv::Mat& arrowOverlay) {
   if (!pid.isCalibrated()) {
-    std::cout << "Cannot analyze board: Select 'c' to calibrate first." << std::endl;
-    return;
+    std::cerr << "Cannot analyze board: enter command-line mode and calibrate first (or check that there's a calibration folder in your working directory)." << std::endl;
+    exit(EXIT_FAILURE);
   }
 
-  cv::Mat gray;
-  cv::cvtColor(currFrame, gray, cv::COLOR_BGR2GRAY);
-
-
+  cv::Mat warped = ch::grayWarp(image, M);
 }
