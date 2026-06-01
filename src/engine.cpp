@@ -1,6 +1,7 @@
 #include "ChessHelper/engine.h"
 
-#include "httplib.h"
+#include <fstream>
+#include <regex>
 
 namespace ch = ChessHelper;
 
@@ -49,30 +50,39 @@ ch::Optional<std::array<int, 4>> ChessHelper::findMove(
     std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board,
     char activeColor) {
   std::string fen = fenEncode(board, activeColor);
+  // Spaces need to be URL-encoded for curl to accept them.
+  fen = std::regex_replace(fen, std::regex(" "), "%20");
 
-  httplib::Client client("https://stockfish.online");
-  auto res = client.Get("/api/s/v2.php?fen=" + fen + "&depth=12");
-  if (!res || res->status != 200) {
+  // I honestly couldn't find a better way to do this that didn't
+  // involve pulling in additional libraries.
+  // Based on https://en.cppreference.com/cpp/utility/program/system.
+  int ret = system(("curl \"https://stockfish.online/api/s/v2.php?fen=" + fen +
+                    "&depth=12\" -o temp.txt")
+                       .c_str());
+  if (ret != 0) {
     return ch::empty<std::array<int, 4>>();
   }
+
+  std::ifstream file("temp.txt");
+  std::string res;
+  getline(file, res);
 
   // Lazy extraction.
   // The API returns it as JSON, but we can
   // just use very unrobust string parsing to avoid
   // pulling in a JSON parser library as well.
   std::string search = "bestmove ";
-  size_t searchIdx = res->body.find(search);
+  size_t searchIdx = res.find(search);
   if (searchIdx == std::string::npos) {
     return ch::empty<std::array<int, 4>>();
   }
 
   // Formatted like "bestmove f6e4"
   // ['a', 'f'] is a column, [1, 8] is a row.
-  int fromCol = static_cast<int>(res->body[searchIdx + search.size()] - 'a');
-  int fromRow =
-      static_cast<int>(res->body[searchIdx + search.size() + 1] - '1');
-  int toCol = static_cast<int>(res->body[searchIdx + search.size() + 2] - 'a');
-  int toRow = static_cast<int>(res->body[searchIdx + search.size() + 3] - '1');
+  int fromCol = static_cast<int>(res[searchIdx + search.size()] - 'a');
+  int fromRow = static_cast<int>(res[searchIdx + search.size() + 1] - '1');
+  int toCol = static_cast<int>(res[searchIdx + search.size() + 2] - 'a');
+  int toRow = static_cast<int>(res[searchIdx + search.size() + 3] - '1');
 
   std::array<int, 4> move = {fromRow, fromCol, toRow, toCol};
   return value(move);
