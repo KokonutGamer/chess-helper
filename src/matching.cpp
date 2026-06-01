@@ -353,8 +353,9 @@ void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
       cells[0][2],
       // Knight
       cells[0][1],
-      // Pawn
-      cells[1][0],
+      // Pawn, this particular one calibrates
+      // well in the test image for some reason.
+      cells[6][1],
   };
   this->calibrateShape(allPieces);
 
