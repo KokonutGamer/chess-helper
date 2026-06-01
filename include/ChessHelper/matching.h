@@ -73,17 +73,8 @@ public:
   identifyBoard(const cv::Mat &image) const;
 
   /**
-   * Extracts the shapes of every chess piece and saves them
-   * to a calibration file, to be used for later identification.
-   * @param allPieces is a list of images of different chess pieces.
-   *                  Array values are in the same order as ChessPiece
-   *                  (King, Queen, Rook, Bishop, Knight, Pawn).
-   *                  Each image must be a 1x1 8-bit grayscale CV_U8 image.
-   */
-  void calibrate(const cv::Mat allPieces[NUM_PIECE_TYPES]);
-
-  /**
-   * Runs calibration for a starting chess board.
+   * Runs calibration for a starting chess board ad saves the
+   * data to a file.
    * The input image must be a square grayscale image
    * (CV_8U) containing only the entire chessboard, with pieces
    * arranged in a default chess configuration.
@@ -101,11 +92,57 @@ public:
   static std::vector<std::vector<cv::Mat>> sliceBoard(const cv::Mat &image);
 
 private:
+  /**
+   * Loads the data stored in the calibration directory (if it exists).
+   * Skips loading if no data exists.
+   * Aborts the program on failure.
+   */
+  void loadData();
+
+  /**
+   * Saves the calibration data into the calibration directory,
+   * creating it if it doesn't already exist.
+   * Aborts the program on failure, or if the identifier
+   * isn't already calibrated.
+   */
+  void saveData() const;
+
+  /**
+   * Extracts the shapes of every chess piece and stores
+   * them for later identification (does not mark calibrated as true).
+   * @param allPieces is a list of images of different chess pieces.
+   *                  Array values are in the same order as ChessPiece
+   *                  (King, Queen, Rook, Bishop, Knight, Pawn).
+   *                  Each image must be a square 8-bit grayscale CV_U8 image.
+   */
+  void calibrateShape(const cv::Mat allPieces[NUM_PIECE_TYPES]);
+
+  /**
+   * Extracts the average color from a white and black piece and
+   * stores them for later identification (does not mark calibrated as true).
+   * Both input images must be square 8-bit grayscale CV_U8 images.
+   * @param white is an image of the white piece's cell.
+   * @param black is an image of the black piece's cell.
+   */
+  void calibrateColor(const cv::Mat &white, const cv::Mat &black);
+
+  std::string calibrationDir;
+
   bool calibrated = false;
 
   /**
    * Undefined if calibrated == false.
    */
-  float histogramsByPiece[NUM_PIECE_TYPES][MATCH_HISTOGRAM_BINS];
+  float histogramsByPiece[NUM_PIECE_TYPES][MATCH_HISTOGRAM_BINS]{};
+
+  /**
+   * The mean color found for black pieces during calibration ([0, 255]).
+   */
+  int blackColor{};
+
+  /**
+   * The mean color found for white pieces during calibration ([0, 255]).
+   */
+  int whiteColor{};
 };
 } // namespace ChessHelper
