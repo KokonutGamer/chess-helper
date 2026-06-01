@@ -18,6 +18,11 @@ const int MARGIN = 0; // in pixels
 const int KEY_SETUP = 's';
 const int KEY_ANALYZE = ' ';
 const int KEY_QUIT = 27; // this means 'esc' key btw
+const int ZOOM_IN = '=';
+const int ZOOM_OUT = '-';
+const double ZOOM_STEP = 0.5;
+const double MAX_ZOOM = 4.0;
+const double MIN_ZOOM = 1.0;
 
 namespace ch = ChessHelper;
 
@@ -121,6 +126,28 @@ void commandInterface() {
 }
 
 /**
+ * Crops the input frame to the specified zoom level.
+ * @param frame is the image to crop.
+ * @param zoom is the zoom level.
+ * @return the cropped image.
+ */
+cv::Mat zoomFrame(cv::Mat &frame, double zoom) {
+  if (zoom <= MIN_ZOOM) {
+    return frame.clone();
+  }
+
+  int newWidth = static_cast<int>(frame.cols / zoom);
+  int newHeight = static_cast<int>(frame.rows / zoom);
+  int xOffset = (frame.cols - newWidth) / 2;
+  int yOffset = (frame.rows - newHeight) / 2;
+
+  cv::Mat zoomed;
+  cv::resize(frame(cv::Rect(xOffset, yOffset, newWidth, newHeight)), zoomed,
+             frame.size());
+  return zoomed;
+}
+
+/**
  * Displays an interactive video feed of the board
  * and best moves.
  */
@@ -138,6 +165,7 @@ void videoInterface() {
   cv::Mat M;
   cv::Mat arrowOverlay;
   cv::Mat currFrame;
+  double zoom = 1.0;
 
   while (true) {
     videoCap >> currFrame;
@@ -145,6 +173,7 @@ void videoInterface() {
       std::cerr << "Frame missed in loop" << std::endl;
       break;
     }
+    currFrame = zoomFrame(currFrame, zoom);
 
     // clone the frame so we can use the original for processing and the clone
     // for display (with chess move arrow)
@@ -176,6 +205,7 @@ void videoInterface() {
 
     cv::imshow("Chess Cheater 9000", display);
 
+    //KEYBOARD INPUT HANDLER
     int key = cv::waitKey(1);
     if (key == KEY_QUIT) {
       break;
@@ -198,11 +228,21 @@ void videoInterface() {
       }
     } else if (key == KEY_ANALYZE) {
       if (M.empty()) {
-        std::cerr << "Cannot analyze board: press 's' first to find corners."
+        std::cerr << "Cannot analyze board: board has not been calibrated yet."
                   << std::endl;
-      } else {
-        analyzeBoard(currFrame, pieceID, M, arrowOverlay);
+        continue;
       }
+      analyzeBoard(currFrame, pieceID, M, arrowOverlay);
+    } else if (key == ZOOM_IN) {
+      zoom = std::min(zoom + ZOOM_STEP, MAX_ZOOM);
+      M.release();
+      arrowOverlay.release();
+      std::cout << "Make sure to recalibrate after zooming in or out" << std::endl;
+    } else if (key == ZOOM_OUT) {
+      zoom = std::max(zoom - ZOOM_STEP, MIN_ZOOM);
+      M.release();
+      arrowOverlay.release();
+      std::cout << "Make sure to recalibrate after zooming in or out" << std::endl;
     }
   }
 
