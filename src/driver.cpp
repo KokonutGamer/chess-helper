@@ -11,13 +11,14 @@
 
 #include <numeric>
 
-const int NUM_DOWNSAMPLES = 2;
-const int MARGIN = 0; // in pixels
+constexpr int NUM_DOWNSAMPLES = 2;
+constexpr int MARGIN = 0; // in pixels
 
 // -- Keybindings --
-const int KEY_SETUP = 's';
-const int KEY_ANALYZE = ' ';
-const int KEY_QUIT = 27; // this means 'esc' key btw
+constexpr int KEY_SETUP = 's';
+constexpr int KEY_ANALYZE = ' ';
+constexpr int KEY_QUIT = 27;   // this means 'esc' key btw
+constexpr int KEY_DEBUG = 100; // lowercase 'd'
 
 namespace ch = ChessHelper;
 
@@ -125,10 +126,12 @@ void commandInterface() {
  * and best moves.
  */
 void videoInterface() {
+  static bool debug = false;
+
   // -- setup --
   cv::VideoCapture videoCap(0);
   if (!videoCap.isOpened()) {
-    std::cerr << "Could not open your camera." << std::endl;
+    std::cerr << "Could not open camera." << std::endl;
     exit(EXIT_FAILURE);
   }
 
@@ -150,11 +153,28 @@ void videoInterface() {
     // for display (with chess move arrow)
     cv::Mat displayWithArrow = currFrame.clone();
 
-    if (!arrowOverlay.empty()) {
-      // TODO: draw the arrow overlay on top of the display frame.
-    }
+    if (debug) {
+      // copied corner harris for now
+      cv::Mat display;
+      cv::Mat grayOriginal;
+      cv::cvtColor(displayWithArrow, grayOriginal, cv::COLOR_BGR2GRAY);
+      grayOriginal.convertTo(grayOriginal, CV_32F, 1.0 / 255.0);
+      cv::Mat corners =
+          cv::Mat::zeros(grayOriginal.size(), grayOriginal.type());
+      cv::cornerHarris(grayOriginal, corners, 3, 7, 0.05);
+      corners.convertTo(corners, CV_8U);
 
-    cv::imshow("Chess Cheater 9000", displayWithArrow);
+      cv::Mat cornerColor;
+      cv::cvtColor(corners, cornerColor, cv::COLOR_GRAY2BGR);
+
+      cv::hconcat(displayWithArrow, cornerColor, display);
+      cv::resizeWindow("Chess Cheater 9000", display.cols, display.rows);
+      cv::imshow("Chess Cheater 9000", display);
+    } else {
+      cv::resizeWindow("Chess Cheater 9000", displayWithArrow.cols,
+                       displayWithArrow.rows);
+      cv::imshow("Chess Cheater 9000", displayWithArrow);
+    }
 
     int key = cv::waitKey(1);
     if (key == KEY_QUIT) {
@@ -176,6 +196,15 @@ void videoInterface() {
       }
     } else if (key == KEY_ANALYZE) {
       analyzeBoard(currFrame, pieceID, M, arrowOverlay);
+    } else if (key == KEY_DEBUG) {
+      debug = !debug;
+
+      if (!debug) {
+        std::cout << "Debug mode activated." << std::endl;
+      } else {
+        std::cout << "Debug mode deactivated." << std::endl;
+        continue;
+      }
     }
   }
 
@@ -229,6 +258,7 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
 
   // we need these points as a float for the perspective transform
   std::vector<cv::Point2f> points(outer.first.begin(), outer.first.end());
+
   // This needs to be remapped back to the originally sized
   // image so we have enough info for piece identification.
   std::cout << (static_cast<float>(grayOriginal.cols) / grayDownscaled.cols)
