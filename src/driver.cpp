@@ -167,7 +167,10 @@ void videoInterface() {
 
       std::vector<cv::Point2f> points = ch::collapsePoints(corners);
       cv::Mat triangleImage(displayWithArrow.size(), displayWithArrow.type());
-      ch::delaunay(triangleImage, points);
+      cv::Subdiv2D subdiv = ch::delaunay(triangleImage, points);
+
+      std::vector<cv::Point2f> filtered = ch::filterVertices(subdiv, points);
+      ch::drawPoints(triangleImage, filtered);
 
       std::vector<cv::Mat> images = {displayWithArrow, cornerColor,
                                      triangleImage};

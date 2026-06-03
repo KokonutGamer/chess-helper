@@ -1,5 +1,21 @@
 #include "ChessHelper/corners.h"
 
+static double getMedian(std::vector<double> &src) {
+  if (src.empty()) {
+    return 0.0;
+  }
+
+  auto target = src.begin() + src.size() / 2;
+  std::nth_element(src.begin(), target, src.end()); // quickselect
+
+  double median = *target;
+  if (src.size() % 2 == 0) {
+    median += *(--target);
+    median /= 2.0;
+  }
+  return median;
+}
+
 namespace ChessHelper {
 /**
  * TODO document
@@ -104,4 +120,110 @@ cv::Subdiv2D delaunay(cv::Mat &image, const std::vector<cv::Point2f> &points,
 
   return subdiv;
 }
+
+std::vector<cv::Point2f>
+filterVertices(const cv::Subdiv2D &subdiv,
+               const std::vector<cv::Point2f> &points) {
+  std::vector<cv::Vec4f> edges;
+  subdiv.getEdgeList(edges);
+
+  // calculate all edge lengths
+  std::vector<double> edgeLengths;
+  edgeLengths.reserve(edges.size());
+  for (const auto &edge : edges) {
+    cv::Vec2f p1(edge[0], edge[1]);
+    cv::Vec2f p2(edge[2], edge[3]);
+    edgeLengths.push_back(cv::norm(p1 - p2));
+  }
+  if (edgeLengths.empty()) {
+    return std::vector<cv::Point2f>{0};
+  }
+  double median = getMedian(edgeLengths);
+  std::vector<double> absdev;
+
+  cv::absdiff(edgeLengths, cv::Scalar(median), absdev);
+
+  double mad = getMedian(absdev);
+
+  std::vector<bool> flagged(edgeLengths.size(), false);
+  for (int i = 0; i < edgeLengths.size(); i++) {
+    if (std::abs(median - edgeLengths[i]) > 3 * mad) {
+      flagged[i] = true;
+    }
+  }
+
+  std::vector<VertexVote> votes(points.size());
+
+  // reverse lookup map
+  std::map<cv::Point2f, int, Point2fCompare> pointToIndex;
+  for (int i = 0; i < points.size(); i++) {
+    pointToIndex[points[i]] = i;
+  }
+
+  // iterate through edges and distribute votes
+  for (size_t i = 0; i < edges.size(); i++) {
+    cv::Point2f p1(edges[i][0], edges[i][1]);
+    cv::Point2f p2(edges[i][2], edges[i][3]);
+
+    // ignore phantom bounding-box points
+    if (pointToIndex.count(p1) == 0 || pointToIndex.count(p2) == 0) {
+      continue;
+    }
+
+    int idx1 = pointToIndex[p1];
+    int idx2 = pointToIndex[p2];
+
+    // valid edge connection increases total incident count
+    votes[idx1].totalIncidentEdges++;
+    votes[idx2].totalIncidentEdges++;
+
+    // edge flagged as anomalous, increase bad edge count
+    if (flagged[i]) {
+      votes[idx1].flaggedEdges++;
+      votes[idx2].flaggedEdges++;
+    }
+  }
+
+  // filter vertices based on vote ratio
+  std::vector<cv::Point2f> res;
+  res.reserve(points.size());
+
+  for (int i = 0; i < points.size(); i++) {
+    if (votes[i].getAnomalyRatio() <= 0.25f) {
+      res.push_back(points[i]);
+    }
+  }
+
+  return res;
+}
+
+void drawPoints(cv::Mat &image, std::vector<cv::Point2f> &points,
+                const cv::Vec3b &color) {
+  if (image.empty()) {
+    throw std::runtime_error("Image must not be empty.");
+  }
+
+  if (image.type() != CV_8UC3) {
+    throw std::runtime_error("Image must be BGR.");
+  }
+
+  cv::Mat mask(image.size(), CV_8U);
+
+  for (const auto &point : points) {
+    mask.at<unsigned char>(point.y, point.x) = 255;
+  }
+
+  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(9, 9));
+  cv::Mat dest;
+  cv::dilate(mask, dest, kernel);
+
+  for (int i = 0; i < image.rows; i++) {
+    for (int j = 0; j < image.cols; j++) {
+      if (dest.at<unsigned char>(i, j) == 255) {
+        image.at<cv::Vec3b>(i, j) = color;
+      }
+    }
+  }
+}
+
 } // namespace ChessHelper
