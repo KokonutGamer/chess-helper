@@ -81,7 +81,7 @@ void commandInterface() {
     }
     cv::Mat M = boardRes.first;
 
-    cv::Mat warped = ch::grayWarp(currFrame, M);
+    cv::Mat warped = ch::warpImage(currFrame, M);
     cv::imwrite("ch-warped.png", warped);
     std::cout << "Wrote warped image to ch-warped.png" << std::endl;
 
@@ -205,7 +205,7 @@ void videoInterface() {
 
     cv::imshow("Chess Cheater 9000", display);
 
-    //KEYBOARD INPUT HANDLER
+    // KEYBOARD INPUT HANDLER
     int key = cv::waitKey(1);
     if (key == KEY_QUIT) {
       break;
@@ -237,12 +237,14 @@ void videoInterface() {
       zoom = std::min(zoom + ZOOM_STEP, MAX_ZOOM);
       M.release();
       arrowOverlay.release();
-      std::cout << "Make sure to recalibrate after zooming in or out" << std::endl;
+      std::cout << "Make sure to recalibrate after zooming in or out"
+                << std::endl;
     } else if (key == ZOOM_OUT) {
       zoom = std::max(zoom - ZOOM_STEP, MIN_ZOOM);
       M.release();
       arrowOverlay.release();
-      std::cout << "Make sure to recalibrate after zooming in or out" << std::endl;
+      std::cout << "Make sure to recalibrate after zooming in or out"
+                << std::endl;
     }
   }
 
@@ -345,7 +347,7 @@ void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
     exit(EXIT_FAILURE);
   }
 
-  cv::Mat warped = ch::grayWarp(image, M);
+  cv::Mat warped = ch::warpImage(image, M);
   auto board = pid.identifyBoard(warped);
 
   for (int row = 0; row < ch::CELLS_PER_SIDE; row++) {
