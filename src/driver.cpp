@@ -7,8 +7,8 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "ChessHelper/utils.h"
 #include "ChessHelper/corners.h"
+#include "ChessHelper/utils.h"
 
 #include <numeric>
 
@@ -164,8 +164,15 @@ void videoInterface() {
       // display side-by-side in debug mode
       cv::Mat cornerColor;
       cv::cvtColor(corners, cornerColor, cv::COLOR_GRAY2BGR);
-      cv::hconcat(displayWithArrow, cornerColor, display);
 
+      std::vector<cv::Point2f> points = ch::collapsePoints(corners);
+      cv::Mat triangleImage(displayWithArrow.size(), displayWithArrow.type());
+      ch::delaunay(triangleImage, points);
+
+      std::vector<cv::Mat> images = {displayWithArrow, cornerColor,
+                                     triangleImage};
+
+      cv::hconcat(images, display);
       cv::resizeWindow("Chess Cheater 9000", display.cols, display.rows);
       cv::imshow("Chess Cheater 9000", display);
     } else {

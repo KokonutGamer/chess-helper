@@ -62,4 +62,46 @@ std::vector<cv::Point2f> collapsePoints(const cv::Mat &corners) {
   }
   return points;
 }
+
+/**
+ * TODO document
+ */
+cv::Subdiv2D delaunay(cv::Mat &image, const std::vector<cv::Point2f> &points,
+                      const cv::Scalar &color) {
+  cv::Rect boundingBox(0, 0, image.cols, image.rows);
+  cv::Subdiv2D subdiv(boundingBox);
+
+  if (points.empty()) {
+    return subdiv;
+  }
+
+  // insert points into subdivision
+  for (const auto &p : points) {
+    if (boundingBox.contains(p)) {
+      subdiv.insert(p);
+    }
+  }
+
+  // extract triangle list
+  std::vector<cv::Vec6f> triangleList;
+  subdiv.getTriangleList(triangleList);
+
+  for (const auto &t : triangleList) {
+    cv::Point pt1(cvRound(t[0]), cvRound(t[1]));
+    cv::Point pt2(cvRound(t[2]), cvRound(t[3]));
+    cv::Point pt3(cvRound(t[4]), cvRound(t[5]));
+
+    // Subdiv2D algorithm creates a "super-triangle" outside the bounding box to
+    // compute the triangulation; we must filter out any triangles that connect
+    // to it
+    if (boundingBox.contains(pt1) && boundingBox.contains(pt2) &&
+        boundingBox.contains(pt3)) {
+      cv::line(image, pt1, pt2, color, 1, cv::LINE_AA);
+      cv::line(image, pt2, pt3, color, 1, cv::LINE_AA);
+      cv::line(image, pt3, pt1, color, 1, cv::LINE_AA);
+    }
+  }
+
+  return subdiv;
+}
 } // namespace ChessHelper
