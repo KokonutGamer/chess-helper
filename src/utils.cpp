@@ -2,9 +2,10 @@
 
 namespace ch = ChessHelper;
 
-static ch::Optional<cv::Point2i> findCorner(const cv::Mat &image, int minR,
-                                            int maxR, int minC, int maxC,
-                                            const ch::Mapping &mapper) {
+namespace ChessHelper {
+static Optional<cv::Point2i> findCorner(const cv::Mat &image, int minR,
+                                        int maxR, int minC, int maxC,
+                                        const Mapping &mapper) {
 
   // Base case, traverses the smallest region to find a value
   if ((maxR - minR <= 2) && (maxC - minC <= 2)) {
@@ -13,11 +14,11 @@ static ch::Optional<cv::Point2i> findCorner(const cv::Mat &image, int minR,
         cv::Point2i real = mapper(image, r, c);
         if (image.at<unsigned char>(real.x, real.y) == 255) {
           cv::Point2i val = {real.x, real.y};
-          return ch::value<cv::Point2i>(std::move(val));
+          return value<cv::Point2i>(std::move(val));
         }
       }
     }
-    return ch::empty<cv::Point2i>();
+    return empty<cv::Point2i>();
   }
 
   int midR = minR + (maxR - minR) / 2 + 1;
@@ -28,7 +29,7 @@ static ch::Optional<cv::Point2i> findCorner(const cv::Mat &image, int minR,
   // expected from a top-left-only implementation.
 
   // always return the top-left result
-  ch::Optional<cv::Point2i> topLeft =
+  Optional<cv::Point2i> topLeft =
       findCorner(image, minR, midR, minC, midC, mapper);
   if (topLeft.second) {
     return topLeft;
@@ -37,17 +38,17 @@ static ch::Optional<cv::Point2i> findCorner(const cv::Mat &image, int minR,
   // For top-right and bot-left, we must compare them based on the hyperbolic
   // metric. This maximizes distance in either x or y while minimizes distance
   // in the other.
-  ch::Optional<cv::Point2i> topRight =
+  Optional<cv::Point2i> topRight =
       findCorner(image, minR, midR, midC, maxC, mapper);
-  ch::Optional<cv::Point2i> botLeft =
+  Optional<cv::Point2i> botLeft =
       findCorner(image, midR, maxR, minC, midC, mapper);
   if (topRight.second && botLeft.second) {
     cv::Point2i target = mapper(image, minR, minC);
 
     int trScore =
-        ch::hyperbolic(topRight.first.x, topRight.first.y, target.x, target.y);
+        hyperbolic(topRight.first.x, topRight.first.y, target.x, target.y);
     int blScore =
-        ch::hyperbolic(botLeft.first.x, botLeft.first.y, target.x, target.y);
+        hyperbolic(botLeft.first.x, botLeft.first.y, target.x, target.y);
 
     return (trScore > blScore) ? topRight : botLeft;
   }
@@ -61,57 +62,57 @@ static ch::Optional<cv::Point2i> findCorner(const cv::Mat &image, int minR,
   }
 
   // worst case bottom right (can be null)
-  ch::Optional<cv::Point2i> botRight =
+  Optional<cv::Point2i> botRight =
       findCorner(image, midR, maxR, midC, maxC, mapper);
   return botRight;
 }
 
-ch::Optional<std::vector<cv::Point2i>> ch::findCorners(cv::Mat &image) {
+Optional<std::vector<cv::Point2i>> findCorners(cv::Mat &image) {
 
   // assertions (image must be non-empty and 8-bit unsigned)
   if (image.empty()) {
-    return ch::empty<std::vector<cv::Point2i>>();
+    return empty<std::vector<cv::Point2i>>();
   }
 
   if (image.type() != CV_8U) {
-    return ch::empty<std::vector<cv::Point2i>>();
+    return empty<std::vector<cv::Point2i>>();
   }
 
   std::vector<cv::Point2i> corners;
   corners.reserve(4);
 
-  ch::Optional<cv::Point2i> topLeft =
-      findCorner(image, 0, image.rows, 0, image.cols, &ch::topLeft);
-  if (topLeft.second) {
-    corners.push_back(topLeft.first);
+  Optional<cv::Point2i> topLeftCorner =
+      findCorner(image, 0, image.rows, 0, image.cols, &topLeft);
+  if (topLeftCorner.second) {
+    corners.push_back(topLeftCorner.first);
   }
 
-  ch::Optional<cv::Point2i> topRight =
-      findCorner(image, 0, image.rows, 0, image.cols, &ch::topRight);
-  if (topRight.second) {
-    corners.push_back(topRight.first);
+  Optional<cv::Point2i> topRightCorner =
+      findCorner(image, 0, image.rows, 0, image.cols, &topRight);
+  if (topRightCorner.second) {
+    corners.push_back(topRightCorner.first);
   }
 
-  ch::Optional<cv::Point2i> botLeft =
-      findCorner(image, 0, image.rows, 0, image.cols, &ch::botLeft);
-  if (botLeft.second) {
-    corners.push_back(botLeft.first);
+  Optional<cv::Point2i> botLeftCorner =
+      findCorner(image, 0, image.rows, 0, image.cols, &botLeft);
+  if (botLeftCorner.second) {
+    corners.push_back(botLeftCorner.first);
   }
 
-  ch::Optional<cv::Point2i> botRight =
-      findCorner(image, 0, image.rows, 0, image.cols, &ch::botRight);
-  if (botRight.second) {
-    corners.push_back(botRight.first);
+  Optional<cv::Point2i> botRightCorner =
+      findCorner(image, 0, image.rows, 0, image.cols, &botRight);
+  if (botRightCorner.second) {
+    corners.push_back(botRightCorner.first);
   }
 
   if (corners.empty()) {
-    return ch::empty<std::vector<cv::Point2i>>();
+    return empty<std::vector<cv::Point2i>>();
   }
 
-  return ch::value(std::move(corners));
+  return value(std::move(corners));
 }
 
-cv::Mat ChessHelper::grayWarp(const cv::Mat &image, const cv::Mat &transform) {
+cv::Mat grayWarp(const cv::Mat &image, const cv::Mat &transform) {
   cv::Mat warped;
   cv::cvtColor(image, warped, cv::COLOR_BGR2GRAY);
 
@@ -123,3 +124,4 @@ cv::Mat ChessHelper::grayWarp(const cv::Mat &image, const cv::Mat &transform) {
 
   return warped;
 }
+} // namespace ChessHelper
