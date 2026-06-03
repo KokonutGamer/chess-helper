@@ -8,6 +8,7 @@
 #include <opencv2/opencv.hpp>
 
 #include "ChessHelper/utils.h"
+#include "ChessHelper/corners.h"
 
 #include <numeric>
 
@@ -154,36 +155,17 @@ void videoInterface() {
     cv::Mat displayWithArrow = currFrame.clone();
 
     if (debug) {
-      // TODO move to pipeline method
-
       // display used for debugging
       cv::Mat display;
 
-      // convert video frame to grayscale
-      cv::Mat grayOriginal;
-      cv::cvtColor(displayWithArrow, grayOriginal, cv::COLOR_BGR2GRAY);
-      grayOriginal.convertTo(grayOriginal, CV_32F, 1.0 / 255.0);
-      
-      // harris corner detection
-      cv::Mat corners =
-          cv::Mat::zeros(grayOriginal.size(), grayOriginal.type());
-      cv::cornerHarris(grayOriginal, corners, 3, 7, 0.05);
+      // corner detection pipeline
+      cv::Mat corners = ch::detectCorners(displayWithArrow);
 
-      // use a small 3x3 kernel for morphological open (erosion then dilation)
-      cv::Mat kernel =
-          cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-      cv::Mat opened;
-      cv::morphologyEx(corners, opened, cv::MORPH_OPEN, kernel);
-      opened.convertTo(opened, CV_8U);
-
-      // small threshold for now
-      cv::threshold(opened, opened, 10, 255, cv::THRESH_BINARY);
-      opened.convertTo(opened, CV_8U);
-
+      // display side-by-side in debug mode
       cv::Mat cornerColor;
-      cv::cvtColor(opened, cornerColor, cv::COLOR_GRAY2BGR);
-
+      cv::cvtColor(corners, cornerColor, cv::COLOR_GRAY2BGR);
       cv::hconcat(displayWithArrow, cornerColor, display);
+
       cv::resizeWindow("Chess Cheater 9000", display.cols, display.rows);
       cv::imshow("Chess Cheater 9000", display);
     } else {
