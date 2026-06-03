@@ -118,7 +118,7 @@ void collectContourHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
  * @param hasPiece is written with whether this cell contains something (not
  *                 empty).
  * @param averageColor is written with the average color of the center of the
- *                     piece as RGB [0, 255].
+ *                     piece as BGR [0, 255].
  * @param image is the image to extract the shape from.
  */
 void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
