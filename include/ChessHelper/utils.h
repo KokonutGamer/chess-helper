@@ -66,4 +66,11 @@ Optional<std::vector<cv::Point2i>> findCorners(cv::Mat &);
  * @return a newly transformed image.
  */
 cv::Mat grayWarp(const cv::Mat &image, const cv::Mat &transform);
+
+/**
+ * TODO document
+ */
+static inline int clamp(float val, int low, int high) {
+  return (val < low) ? low : (val > high) ? high : static_cast<int>(val);
+}
 } // namespace ChessHelper

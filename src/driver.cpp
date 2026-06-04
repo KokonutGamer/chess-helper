@@ -159,21 +159,18 @@ void videoInterface() {
       cv::Mat display;
 
       // corner detection pipeline
-      cv::Mat corners = ch::detectCorners(displayWithArrow);
+      // cv::Mat corners = ch::detectCorners(displayWithArrow);
 
-      // display side-by-side in debug mode
-      cv::Mat cornerColor;
-      cv::cvtColor(corners, cornerColor, cv::COLOR_GRAY2BGR);
+      cv::Mat response = ch::sample(displayWithArrow);
+      cv::Mat res8u;
+      cv::normalize(response, res8u, 255.0, 0.0, cv::NORM_MINMAX, CV_8UC1);
 
-      std::vector<cv::Point2f> points = ch::collapsePoints(corners);
-      cv::Mat triangleImage(displayWithArrow.size(), displayWithArrow.type());
-      cv::Subdiv2D subdiv = ch::delaunay(triangleImage, points);
+      //response.convertTo(res8u, CV_8UC1, 255.0);
 
-      std::vector<cv::Point2f> filtered = ch::filterVertices(subdiv, points);
-      ch::drawPoints(triangleImage, filtered);
+      cv::Mat resColor;
+      cv::cvtColor(res8u, resColor, cv::COLOR_GRAY2BGR);
 
-      std::vector<cv::Mat> images = {displayWithArrow, cornerColor,
-                                     triangleImage};
+      std::vector<cv::Mat> images = {displayWithArrow, resColor};
 
       cv::hconcat(images, display);
       cv::resizeWindow("Chess Cheater 9000", display.cols, display.rows);
@@ -207,11 +204,10 @@ void videoInterface() {
     } else if (key == KEY_DEBUG) {
       debug = !debug;
 
-      if (!debug) {
+      if (debug) {
         std::cout << "Debug mode activated." << std::endl;
       } else {
         std::cout << "Debug mode deactivated." << std::endl;
-        continue;
       }
     }
   }
