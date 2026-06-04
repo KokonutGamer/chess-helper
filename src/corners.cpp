@@ -115,4 +115,16 @@ cv::Mat sample(const cv::Mat &image, int ksize, double sigma) {
   return cand;
 }
 
+cv::Mat adjustGamma(const cv::Mat &image, double gamma) {
+  cv::Mat corrected;
+  cv::pow(image, gamma, corrected);
+  return corrected;
+  //cv::Mat corrected8u;
+  //corrected.convertTo(corrected8u, CV_8U, 255.0);
+
+  //cv::Mat color;
+  //cv::cvtColor(corrected8u, color, cv::COLOR_GRAY2BGR);
+  //return color;
+}
+
 } // namespace ChessHelper
