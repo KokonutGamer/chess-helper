@@ -15,21 +15,8 @@ static constexpr int SUM_NUM_NEIGHBORS = 4;
 static constexpr int DIFF_NUM_NEIGHBORS = 8;
 static constexpr int NUM_NEIGHBORS = 16;
 
-static double getMedian(std::vector<double> &src) {
-  if (src.empty()) {
-    return 0.0;
-  }
-
-  auto target = src.begin() + src.size() / 2;
-  std::nth_element(src.begin(), target, src.end()); // quickselect
-
-  double median = *target;
-  if (src.size() % 2 == 0) {
-    median += *(--target);
-    median /= 2.0;
-  }
-  return median;
-}
+static constexpr double CORRECTION_GAMMA = 5.0;
+static constexpr double RESPONSE_THRESHOLD = 0.5;
 
 /**
  * TODO document, assumes r and c are already in image (just a helper function)
@@ -111,20 +98,61 @@ cv::Mat sample(const cv::Mat &image, int ksize, double sigma) {
       cand.at<double>(i, j) = calcResponse(gray, i, j);
     }
   }
-
+  cv::normalize(cand, cand, 1.0, 0.0, cv::NORM_MINMAX);
   return cand;
 }
 
-cv::Mat adjustGamma(const cv::Mat &image, double gamma) {
-  cv::Mat corrected;
-  cv::pow(image, gamma, corrected);
-  return corrected;
-  //cv::Mat corrected8u;
-  //corrected.convertTo(corrected8u, CV_8U, 255.0);
+Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response) {
+  // dilate response image to keep maximums in 5 x 5 neighborhood
+  cv::Mat kernel = cv::getStructuringElement(cv::MORPH_DILATE, cv::Size(5, 5));
+  cv::Mat pointResponse;
+  cv::dilate(response, pointResponse, kernel);
 
-  //cv::Mat color;
-  //cv::cvtColor(corrected8u, color, cv::COLOR_GRAY2BGR);
-  //return color;
+  // gamma correction (pixels SHOULD be within 0.0 to 1.0 range)
+  cv::pow(pointResponse, CORRECTION_GAMMA, pointResponse);
+
+  // need to threshold to binary mask for centroid calculation
+  cv::Mat inter;
+  cv::threshold(pointResponse, inter, RESPONSE_THRESHOLD, 255.0,
+                cv::THRESH_BINARY);
+  cv::Mat mask;
+  inter.convertTo(mask, CV_8UC1);
+
+  // calculate centroids as average of connected components
+  cv::Mat labels, stats, centroids;
+  int num = cv::connectedComponentsWithStats(mask, labels, stats, centroids);
+
+  if (num <= 1) {
+    return empty<std::vector<cv::Point>>();
+  }
+
+  std::vector<cv::Point> points;
+
+  // skip background (label 0)
+  for (int i = 1; i < num; i++) {
+    double x = centroids.at<double>(i, 0);
+    double y = centroids.at<double>(i, 1);
+    points.emplace_back(static_cast<int>(x), static_cast<int>(y));
+  }
+
+  std::vector<cv::Point> hull;
+  cv::convexHull(points, hull);
+
+  std::vector<cv::Point> quad;
+  double epsilon = 0.02 * cv::arcLength(hull, true);
+
+  while (true) {
+    cv::approxPolyDP(hull, quad, epsilon, true);
+    if (quad.size() == 4) {
+      break;
+    } else if (quad.size() < 4) {
+      epsilon *= 0.9;
+    } else {
+      epsilon *= 1.1;
+    }
+  }
+
+  return value<std::vector<cv::Point>>(std::move(quad));
 }
 
 } // namespace ChessHelper

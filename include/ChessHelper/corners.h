@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ChessHelper/utils.h>
+
 #include <opencv2/opencv.hpp>
 
 #include <vector>
@@ -11,6 +13,9 @@ namespace ChessHelper {
  */
 cv::Mat sample(const cv::Mat &image, int ksize = 5, double sigma = 1.02);
 
-cv::Mat adjustGamma(const cv::Mat &image, double gamma = 4.0);
+/**
+ * TODO document
+ */
+Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response);
 
 } // namespace ChessHelper

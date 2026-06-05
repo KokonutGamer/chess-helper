@@ -160,29 +160,11 @@ void videoInterface() {
 
       // corner detection pipeline
       cv::Mat response = ch::sample(displayWithArrow);
-      cv::Mat res8u;
-      cv::normalize(response, res8u, 255.0, 0.0, cv::NORM_MINMAX, CV_8UC1);
+      std::vector<cv::Point> points = ch::centerCorners(response).first;
+      std::vector<std::vector<cv::Point>> contour = {points};
+      cv::drawContours(displayWithArrow, contour, 0, cv::Scalar(0, 0, 255), 2);
 
-      cv::Mat kernel =
-          cv::getStructuringElement(cv::MORPH_DILATE, cv::Size(5, 5));
-      cv::Mat localMax;
-      cv::dilate(response, localMax, kernel);
-      cv::normalize(localMax, localMax, 1.0, 0.0, cv::NORM_MINMAX);
-      cv::Mat corrected = ch::adjustGamma(localMax);
-      
-      cv::Mat localMax8u;
-      localMax.convertTo(localMax8u, CV_8UC1, 255.0, 0.0);
-      cv::Mat resColor;
-      cv::cvtColor(localMax8u, resColor, cv::COLOR_GRAY2BGR);
-
-      cv::Mat thresh;
-      cv::threshold(corrected, thresh, 0.5, 255.0, cv::THRESH_BINARY);
-      cv::Mat thresh8u;
-      thresh.convertTo(thresh8u, CV_8UC1, 1.0);
-      cv::Mat threshColor;
-      cv::cvtColor(thresh8u, threshColor, cv::COLOR_GRAY2BGR);
-
-      std::vector<cv::Mat> images = {displayWithArrow, resColor, threshColor};
+      std::vector<cv::Mat> images = {displayWithArrow};
 
       cv::hconcat(images, display);
       cv::resizeWindow("Chess Cheater 9000", display.cols, display.rows);
