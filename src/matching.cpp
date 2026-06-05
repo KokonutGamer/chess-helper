@@ -14,6 +14,7 @@ namespace ch = ChessHelper;
  * eliminate artifacts.
  * @param size is the size of the square image (pixels).
  * @param contour is a set of points along the contour.
+ * @param center is the variable to write the center (mean) of the contour in.
  * @param spread is the variable to write the spread in ([0, 1000]),
  *               where the maximum represents a perfect circle at
  *               the center with radius = size/2.
@@ -21,12 +22,11 @@ namespace ch = ChessHelper;
  *                    from the center in ([0, 1000]).
  */
 void getContourStats(int size, const std::vector<cv::Point> &contour,
-                     int &spread, int &sqrDistance) {
+                     cv::Point2f &center, int &spread, int &sqrDistance) {
   cv::Point sum;
   sum = std::accumulate(contour.begin(), contour.end(), sum);
 
-  cv::Point2f center =
-      cv::Point2f(sum.x / contour.size(), sum.y / contour.size());
+  center = cv::Point2f(sum.x / contour.size(), sum.y / contour.size());
 
   // Mean distance from the center of mass.
   spread = 0;
@@ -117,10 +117,12 @@ void collectContourHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
  * @param outHistogram is the histogram to write into.
  * @param hasPiece is written with whether this cell contains something (not
  *                 empty).
+ * @param averageColor is written with the average color of the center of the
+ *                     piece as BGR [0, 255].
  * @param image is the image to extract the shape from.
  */
 void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
-                    bool &hasPiece, const cv::Mat &image) {
+                    bool &hasPiece, int averageColor[3], const cv::Mat &image) {
   if (image.rows != image.cols) {
     throw new std::runtime_error(
         "writeGradientHistogram received a non-square input!");
@@ -131,7 +133,8 @@ void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
   cv::Mat edges;
 
   // Parameters found experimentally.
-  cv::GaussianBlur(image, edges, cv::Size(3, 3), 0.8);
+  cv::cvtColor(image, edges, cv::COLOR_BGR2GRAY);
+  cv::GaussianBlur(edges, edges, cv::Size(3, 3), 0.8);
   cv::Canny(edges, edges, 60, 200);
 
   // This will group lines on the chess board.
@@ -152,13 +155,21 @@ void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
 
   int totalContourPoints = 0;
 
+  // To identify piece color, we want to find the color
+  // at the center of the piece.
+  // We can do that by finding the center of all the contour
+  // points, and sampling there, which will hopefully not lie
+  // along a contour.
+  cv::Point2f averageCenter;
+
   for (int i = 0; i < contours.size(); i++) {
     auto &contour = contours[i];
 
     // Eliminate artifacts.
     int spread;
     int sqrDistance;
-    getContourStats(size, contour, spread, sqrDistance);
+    cv::Point2f center;
+    getContourStats(size, contour, center, spread, sqrDistance);
 
     // Eliminate circles, which have a large spread.
     if (spread > 400)
@@ -180,6 +191,7 @@ void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
 
     collectContourHistogram(outHistogram, histogramCount, contour);
     totalContourPoints += static_cast<int>(contour.size());
+    averageCenter += static_cast<float>(contour.size()) * center;
   }
 
   // The histogram must be normalized to avoid
@@ -192,6 +204,28 @@ void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
   }
 
   hasPiece = totalContourPoints > 200;
+
+  // Collect center color for piece color identification.
+  if (totalContourPoints != 0) {
+    averageCenter /= static_cast<float>(totalContourPoints);
+
+    // Sample points in a small grid to avoid noise from only sampling
+    // a single pixel.
+    // The image is single-channel, so we can just extract the first channel
+    // value.
+    auto samplePoints =
+        image(cv::Rect(static_cast<int>(round(averageCenter.x - 2)),
+                       static_cast<int>(round(averageCenter.y - 2)), 5, 5));
+
+    // Useful for debugging (e.g., if it lies along a contour):
+    /*cv::imshow("samplePoints", samplePoints);
+    cv::waitKey(0);*/
+
+    auto mean = cv::mean(samplePoints);
+    averageColor[0] = static_cast<int>(mean[0]);
+    averageColor[1] = static_cast<int>(mean[1]);
+    averageColor[2] = static_cast<int>(mean[2]);
+  }
 }
 
 /**
@@ -223,6 +257,14 @@ ch::PieceIdentifier::PieceIdentifier(std::string calibrationDir) {
 
 bool ch::PieceIdentifier::isCalibrated() const { return this->calibrated; }
 
+/**
+ * Returns the square euclidean distance of the two input 3D vectors.
+ */
+int sqrDistance(const int a[3], const int b[3]) {
+  return (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) +
+         (a[2] - b[2]) * (a[2] - b[2]);
+}
+
 ch::Optional<std::pair<ch::ChessPiece, ch::ChessColor>>
 ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
   ChessPiece bestPiece;
@@ -230,7 +272,8 @@ ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
 
   float testHistogram[MATCH_HISTOGRAM_BINS];
   bool hasPiece;
-  writePieceInfo(testHistogram, hasPiece, image);
+  int averageColor[3];
+  writePieceInfo(testHistogram, hasPiece, averageColor, image);
 
   if (!hasPiece) {
     return ch::empty<std::pair<ch::ChessPiece, ch::ChessColor>>();
@@ -249,10 +292,13 @@ ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
     }
   }
 
-  // TODO: Set a score threshold to detect
-  //       missing pieces.
-  // TODO: Detect colors.
-  return ch::value(std::make_pair(bestPiece, ChessColor::White));
+  // Piece color is just the closest average color.
+  ChessColor color = sqrDistance(averageColor, this->whiteColor) <
+                             sqrDistance(averageColor, this->blackColor)
+                         ? ChessColor::White
+                         : ChessColor::Black;
+
+  return ch::value(std::make_pair(bestPiece, color));
 }
 
 std::vector<std::vector<ChessHelper::Optional<
@@ -274,20 +320,35 @@ ChessHelper::PieceIdentifier::identifyBoard(const cv::Mat &image) const {
   return identifiedCells;
 }
 
-void ChessHelper::PieceIdentifier::calibrate(
+void ChessHelper::PieceIdentifier::calibrateShape(
     const cv::Mat allPieces[NUM_PIECE_TYPES]) {
   for (int i = 0; i < NUM_PIECE_TYPES; i++) {
     bool hasPiece;
-    writePieceInfo(this->histogramsByPiece[i], hasPiece, allPieces[i]);
+    int _averageColor[3];
+    writePieceInfo(this->histogramsByPiece[i], hasPiece, _averageColor,
+                   allPieces[i]);
 
     if (!hasPiece) {
       throw std::runtime_error("Piece " + std::to_string(i) +
                                " could not be found!");
     }
   }
+}
 
-  this->calibrated = true;
-  this->saveData();
+void ChessHelper::PieceIdentifier::calibrateColor(const cv::Mat &white,
+                                                  const cv::Mat &black) {
+  bool hasPiece;
+  float _histogram[MATCH_HISTOGRAM_BINS];
+
+  writePieceInfo(_histogram, hasPiece, this->whiteColor, white);
+  if (!hasPiece) {
+    throw std::runtime_error("White piece could not be found!");
+  }
+
+  writePieceInfo(_histogram, hasPiece, this->blackColor, black);
+  if (!hasPiece) {
+    throw std::runtime_error("Black piece could not be found!");
+  }
 }
 
 void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
@@ -304,10 +365,18 @@ void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
       cells[0][2],
       // Knight
       cells[0][1],
-      // Pawn
-      cells[1][0],
+      // Pawn, this particular one calibrates
+      // well in the test image for some reason.
+      cells[6][1],
   };
-  this->calibrate(allPieces);
+  this->calibrateShape(allPieces);
+
+  // Queen (3) is the most circular, so more likely to get
+  // a good calibration, and white pieces are at the bottom.
+  this->calibrateColor(cells[7][3], cells[1][3]);
+
+  this->calibrated = true;
+  this->saveData();
 
   // For testing, print out all the pieces.
   // TODO: Remove.
@@ -317,8 +386,9 @@ void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
 
       if (piece.second) {
         std::cout << static_cast<int>(piece.first.first);
+        std::cout << (piece.first.second == ChessColor::White ? 'w' : 'b');
       } else {
-        std::cout << '-';
+        std::cout << "--";
       }
     }
 
@@ -376,6 +446,10 @@ void ChessHelper::PieceIdentifier::loadData() {
   fread(&this->histogramsByPiece, sizeof(float),
         MATCH_HISTOGRAM_BINS * NUM_PIECE_TYPES, calibrationFile);
 
+  // SAFETY: int has the same layout between platforms.
+  fread(&this->blackColor, sizeof(int), 3, calibrationFile);
+  fread(&this->whiteColor, sizeof(int), 3, calibrationFile);
+
   fclose(calibrationFile);
 
   // We're now calibrated.
@@ -415,6 +489,10 @@ void ChessHelper::PieceIdentifier::saveData() const {
   //         across x86_64 and arm64, and Linux and Windows.
   fwrite(&this->histogramsByPiece, sizeof(float),
          MATCH_HISTOGRAM_BINS * NUM_PIECE_TYPES, calibrationFile);
+
+  // SAFETY: int has the same layout between platforms.
+  fwrite(&this->blackColor, sizeof(int), 3, calibrationFile);
+  fwrite(&this->whiteColor, sizeof(int), 3, calibrationFile);
 
   fclose(calibrationFile);
 }

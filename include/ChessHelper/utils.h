@@ -59,18 +59,11 @@ static inline int hyperbolic(int r, int c, int targetR, int targetC) {
 Optional<std::vector<cv::Point2i>> findCorners(cv::Mat &);
 
 /**
- * Transforms the given image to a grayscale (CV_8U) square image
+ * Transforms the given image to a square image
  * according to the perspective transform matrix.
  * @param image is the image to convert (not modified).
  * @param transform is the perspective matrix to transform the image with.
  * @return a newly transformed image.
  */
-cv::Mat grayWarp(const cv::Mat &image, const cv::Mat &transform);
-
-/**
- * TODO document
- */
-static inline int clamp(float val, int low, int high) {
-  return (val < low) ? low : (val > high) ? high : static_cast<int>(val);
-}
+cv::Mat warpImage(const cv::Mat &image, const cv::Mat &transform);
 } // namespace ChessHelper

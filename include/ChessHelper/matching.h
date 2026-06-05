@@ -56,14 +56,16 @@ public:
    * Determines what type of chess piece the given image contains.
    * Returns none if the piece cannot be determined, or if the
    * identifier isn't calibrated.
+   * @param image is a square BGR (CV_8UC3) image containing only an entire
+   *              cell.
    */
   Optional<std::pair<ChessPiece, ChessColor>>
   identifyPiece(const cv::Mat &image) const;
 
   /**
    * Runs piece identification on every cell in the chess board.
-   * The input image must be a square grayscale image
-   * (CV_8U) containing only the entire chessboard, with pieces
+   * The input image must be a square BGR image
+   * (CV_8UC3) containing only the entire chessboard, with pieces
    * arranged in a default chess configuration.
    * @param image is the chess board image to run identification on.
    * @return is the output board, in board[row][column] order, where empty
@@ -73,26 +75,17 @@ public:
   identifyBoard(const cv::Mat &image) const;
 
   /**
-   * Extracts the shapes of every chess piece and saves them
-   * to a calibration file, to be used for later identification.
-   * @param allPieces is a list of images of different chess pieces.
-   *                  Array values are in the same order as ChessPiece
-   *                  (King, Queen, Rook, Bishop, Knight, Pawn).
-   *                  Each image must be a 1x1 8-bit grayscale CV_U8 image.
-   */
-  void calibrate(const cv::Mat allPieces[NUM_PIECE_TYPES]);
-
-  /**
-   * Runs calibration for a starting chess board.
-   * The input image must be a square grayscale image
-   * (CV_8U) containing only the entire chessboard, with pieces
+   * Runs calibration for a starting chess board ad saves the
+   * data to a file.
+   * The input image must be a square BGR image
+   * (CV_8UC3) containing only the entire chessboard, with pieces
    * arranged in a default chess configuration.
    * @param image is the chess board image to calibrate with.
    */
   void calibrate(const cv::Mat &image);
 
   /**
-   * Slices a square grayscale image (CV_8U) containing only
+   * Slices a square BGR image (CV_8UC3) containing only
    * the entire chessboard into individual images for each cell.
    * @param image is the chess board image to slice.
    * @return a nested array of board cell images, organized
@@ -116,6 +109,25 @@ private:
    */
   void saveData() const;
 
+  /**
+   * Extracts the shapes of every chess piece and stores
+   * them for later identification (does not mark calibrated as true).
+   * @param allPieces is a list of images of different chess pieces.
+   *                  Array values are in the same order as ChessPiece
+   *                  (King, Queen, Rook, Bishop, Knight, Pawn).
+   *                  Each image must be a square 8-bit BGR CV_8UC3 image.
+   */
+  void calibrateShape(const cv::Mat allPieces[NUM_PIECE_TYPES]);
+
+  /**
+   * Extracts the average color from a white and black piece and
+   * stores them for later identification (does not mark calibrated as true).
+   * Both input images must be square 8-bit BGR CV_8UC3 images.
+   * @param white is an image of the white piece's cell.
+   * @param black is an image of the black piece's cell.
+   */
+  void calibrateColor(const cv::Mat &white, const cv::Mat &black);
+
   std::string calibrationDir;
 
   bool calibrated = false;
@@ -124,5 +136,15 @@ private:
    * Undefined if calibrated == false.
    */
   float histogramsByPiece[NUM_PIECE_TYPES][MATCH_HISTOGRAM_BINS]{};
+
+  /**
+   * The mean color found for black pieces during calibration (BGR [0, 255]).
+   */
+  int blackColor[3]{};
+
+  /**
+   * The mean color found for white pieces during calibration (BGR [0, 255]).
+   */
+  int whiteColor[3]{};
 };
 } // namespace ChessHelper
