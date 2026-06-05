@@ -218,36 +218,8 @@ void videoInterface() {
  * @return a perspective transform matrix (or empty if one couldn't be found).
  */
 ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
-  cv::Mat grayOriginal;
-  cv::cvtColor(image, grayOriginal, cv::COLOR_BGR2GRAY);
-
-  // found that downsampling is pretty quick and can help with speeding up
-  // computation
-  cv::Mat grayDownscaled = grayOriginal.clone();
-  for (int i = 0; i < NUM_DOWNSAMPLES; i++) {
-    cv::pyrDown(grayDownscaled, grayDownscaled);
-  }
-
-  // use float for harris corner detection; needs to be normalized to work
-  // properly with cv::cornerHarris
-  grayDownscaled.convertTo(grayDownscaled, CV_32F, 1.0 / 255.0);
-
-  // returns CV_32FC1 (32-bit float with one color channel)
-  cv::Mat corners =
-      cv::Mat::zeros(grayDownscaled.size(), grayDownscaled.type());
-  cv::cornerHarris(grayDownscaled, corners, 3, 7, 0.05);
-
-  float max = std::numeric_limits<float>::min();
-  corners.forEach<float>([&](float &pixel, const int *position) {
-    if (pixel > max) {
-      max = pixel;
-    }
-  });
-
-  cv::threshold(corners, corners, max * 0.05, 255, cv::THRESH_BINARY);
-  corners.convertTo(corners, CV_8U);
-
-  ch::Optional<std::vector<cv::Point2i>> outer = ch::findCorners(corners);
+  cv::Mat response = ch::sample(image);
+  ch::Optional<std::vector<cv::Point>> outer = ch::centerCorners(response);
 
   if (!outer.second) {
     std::cout << "Calibration failed: Could not find corners" << std::endl;
@@ -257,28 +229,20 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
   // we need these points as a float for the perspective transform
   std::vector<cv::Point2f> points(outer.first.begin(), outer.first.end());
 
-  // This needs to be remapped back to the originally sized
-  // image so we have enough info for piece identification.
-  std::cout << (static_cast<float>(grayOriginal.cols) / grayDownscaled.cols)
-            << std::endl;
-  for (auto &point : points) {
-    point.x *= static_cast<float>(grayOriginal.cols) / grayDownscaled.cols;
-    point.y *= static_cast<float>(grayOriginal.rows) / grayDownscaled.rows;
-  }
-
   std::cout << "Found corners: " << points[0];
   for (int i = 1; i < points.size(); i++) {
     std::cout << ", " << points[i];
   }
   std::cout << std::endl;
 
-  // must match source point order (TL, TR, BL, BR)
+  // must match source point order (TL, BL, BR, TR)
+  float size = static_cast<float>(std::min(image.rows, image.cols));
+  float margin = size * 0.125f;
   std::vector<cv::Point2f> destination = {
-      {MARGIN, MARGIN},
-      {MARGIN, static_cast<float>(grayOriginal.cols - MARGIN - 1)},
-      {static_cast<float>(grayOriginal.rows - MARGIN - 1), MARGIN},
-      {static_cast<float>(grayOriginal.cols - MARGIN - 1),
-       static_cast<float>(grayOriginal.cols - MARGIN - 1)}};
+      {size - margin - 1.0f, size - margin - 1.0f},
+      {margin, size - margin - 1.0f},
+      {margin, margin},
+      {size - margin - 1.0f, margin}};
 
   return ch::value(cv::getPerspectiveTransform(points, destination));
 }

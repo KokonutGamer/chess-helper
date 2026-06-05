@@ -122,7 +122,9 @@ Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response) {
   cv::Mat labels, stats, centroids;
   int num = cv::connectedComponentsWithStats(mask, labels, stats, centroids);
 
-  if (num <= 1) {
+  // num includes background; there should be AT LEAST 4 points along with the
+  // background label
+  if (num < 5) {
     return empty<std::vector<cv::Point>>();
   }
 
@@ -138,9 +140,11 @@ Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response) {
   std::vector<cv::Point> hull;
   cv::convexHull(points, hull);
 
+  // we approximate the maximum area quadrilateral using the
+  // Ramer-Douglas–Peucker algorithm; bigger epsilons include more points, while
+  // smaller epsilons include less
   std::vector<cv::Point> quad;
   double epsilon = 0.02 * cv::arcLength(hull, true);
-
   while (true) {
     cv::approxPolyDP(hull, quad, epsilon, true);
     if (quad.size() == 4) {
