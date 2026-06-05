@@ -3,11 +3,12 @@
 namespace ChessHelper {
 
 /**
- * Transforms the given image to a square image
- * according to the perspective transform matrix.
- * @param image is the image to convert (not modified).
- * @param transform is the perspective matrix to transform the image with.
- * @return a newly transformed image.
+ * Transforms the given image to a square image according to the perspective
+ * transform matrix.
+ *
+ * @param image		The image to convert (not modified).
+ * @param transform	The perspective matrix to transform the image with.
+ * @return			A newly transformed image.
  */
 cv::Mat ChessHelper::warpImage(const cv::Mat &image, const cv::Mat &transform) {
   cv::Mat warped;

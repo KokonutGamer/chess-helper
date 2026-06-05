@@ -42,7 +42,7 @@ cv::Mat sample(const cv::Mat &image, int ksize = 5, double sigma = 1.02);
  *
  * @param response      A grayscale image of type CV_64FC1
  * @return              An Optional containing the four outer-most points if
- *                      found.
+ *							found.
  */
 Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response);
 

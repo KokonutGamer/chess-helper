@@ -12,9 +12,6 @@
 
 #include <numeric>
 
-constexpr int NUM_DOWNSAMPLES = 2;
-constexpr int MARGIN = 0; // in pixels
-
 // -- Keybindings --
 constexpr int KEY_SETUP = 's';
 constexpr int KEY_ANALYZE = ' ';
@@ -38,6 +35,10 @@ void videoInterface();
 
 void commandInterface();
 
+/**
+ * Waits for command-line input from the user before proceeding with image
+ * processing steps.
+ */
 int main() {
   while (true) {
     std::string selection;
@@ -62,8 +63,8 @@ int main() {
 }
 
 /**
- * Gives the user a command-line menu to try
- * the program's functionality.
+ * Provides the user with a command-line menu to try the program's
+ * functionality.
  */
 void commandInterface() {
   ch::PieceIdentifier pieceID("./calibration");
@@ -130,9 +131,10 @@ void commandInterface() {
 
 /**
  * Crops the input frame to the specified zoom level.
- * @param frame is the image to crop.
- * @param zoom is the zoom level.
- * @return the cropped image.
+ *
+ * @param frame     The image to crop.
+ * @param zoom      The zoom level.
+ * @return          The cropped image.
  */
 static cv::Mat zoomFrame(cv::Mat &frame, double zoom) {
   if (zoom <= MIN_ZOOM) {
@@ -151,13 +153,12 @@ static cv::Mat zoomFrame(cv::Mat &frame, double zoom) {
 }
 
 /**
- * Displays an interactive video feed of the board
- * and best moves.
+ * Displays an interactive video feed of the board and best moves.
  */
 void videoInterface() {
   static bool debug = false;
 
-  // -- setup --
+  // camera setup
   cv::VideoCapture videoCap(0);
   if (!videoCap.isOpened()) {
     std::cerr << "Could not open camera." << std::endl;
@@ -233,8 +234,6 @@ void videoInterface() {
         arrowOverlay.release();
         // BGRA
         arrowOverlay = cv::Mat::zeros(currFrame.size(), CV_8UC4);
-
-        // TODO: Maybe draw corner points onto arrowOverlay using inverse(M)?
       } else {
         std::cerr << "Could not setup board (not all corners could be found)."
                   << std::endl;
@@ -273,9 +272,12 @@ void videoInterface() {
  * Extracts the corner points from the input chess board image, and if they
  * can be found, returns a perspective transform matrix to make the image
  * contain only the entire chessboard.
- * @param image is the image to analyze.
- * @param pointer to a vector of points to move corner points to if non-null.
- * @return a perspective transform matrix (or empty if one couldn't be found).
+ *
+ * @param image     The image to analyze.
+ * @param corners   A pointer to a vector of points to move corner points to if
+ *                      non-null.
+ * @return          A perspective transform matrix (or empty if one couldn't be
+ *                      found).
  */
 ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
                                  std::vector<cv::Point> *corners) {
@@ -287,7 +289,7 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
     return ch::empty<cv::Mat>();
   }
 
-  // we need these points as a float for the perspective transform
+  // need points as a float for the perspective transform
   std::vector<cv::Point2f> points(outer.first.begin(), outer.first.end());
 
   if (corners != nullptr) {
@@ -300,7 +302,7 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
   }
   std::cout << std::endl;
 
-  // must match source point order (TL, BL, BR, TR)
+  // must match source point order (BR, TR, TL, BL)
   float size = static_cast<float>(std::min(image.rows, image.cols));
   float margin = size * 0.125f;
   std::vector<cv::Point2f> destination = {
@@ -317,13 +319,15 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
  * and draws an arrow to indicate the move on the screen.
  * If the piece identifier isn't already calibrated, this will abort the
  * program.
- * @param image is the image to identify pieces on. It should be the same
- *              image the perspective transform was extracted from (i.e., not
- *              warped).
- * @param pid is the piece identifier to use (must be calibrated).
- * @param M is the perspective transform matrix to correct the input image.
- * @param arrowOverlay is an image with the same shape as `image`, and which the
- *                     arrow will be drawn into by this function.
+ *
+ * @param image         The image to identify pieces on. It should be the same
+ *                          image the perspective transform was extracted from
+ *                          (i.e., not warped).
+ * @param pid           The piece identifier to use (must be calibrated).
+ * @param M             The perspective transform matrix to correct the input
+ *                          image.
+ * @param arrowOverlay  An image with the same shape as `image`, and which the
+ *                          arrow will be drawn into by this function.
  */
 void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
                   const cv::Mat &M, cv::Mat &arrowOverlay) {
@@ -351,8 +355,7 @@ void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
 
       cv::putText(
           arrowOverlay, pieceText,
-          // I had to do a slight offset or else the text would overflow and get
-          // clipped.
+          // slight offset or else the text would overflows and get clipped
           cv::Point(10 + col * warped.cols / ChessHelper::CELLS_PER_SIDE,
                     50 + row * warped.rows / ChessHelper::CELLS_PER_SIDE),
           cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(20, 20, 255, 255), 4);
