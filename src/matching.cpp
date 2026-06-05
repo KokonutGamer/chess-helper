@@ -1,6 +1,11 @@
 #include "ChessHelper/matching.h"
 
 #include <numeric>
+#include <sys/stat.h>
+
+#if defined(_WIN32)
+#include <direct.h>
+#endif
 
 namespace ch = ChessHelper;
 
@@ -97,18 +102,25 @@ void collectContourHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
 }
 
 /**
+ * Computes various information about a cell to identify which piece
+ * it contains.
+ *
  * Computes a histogram of gradient angles for the chess piece
  * contained in the image, and writes it into outHistogram.
  * This will be a normalized vector.
+ *
+ * Determines whether there's a piece in the cell.
  *
  * The image must be a square grayscale CV_U8 image of a single
  * chess board cell.
  *
  * @param outHistogram is the histogram to write into.
+ * @param hasPiece is written with whether this cell contains something (not
+ *                 empty).
  * @param image is the image to extract the shape from.
  */
-void writeGradientHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
-                            const cv::Mat &image) {
+void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
+                    bool &hasPiece, const cv::Mat &image) {
   if (image.rows != image.cols) {
     throw new std::runtime_error(
         "writeGradientHistogram received a non-square input!");
@@ -138,6 +150,8 @@ void writeGradientHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
   memset(outHistogram, 0, sizeof(float) * ch::MATCH_HISTOGRAM_BINS);
   int histogramCount = 0;
 
+  int totalContourPoints = 0;
+
   for (int i = 0; i < contours.size(); i++) {
     auto &contour = contours[i];
 
@@ -165,6 +179,7 @@ void writeGradientHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
     cv::LINE_8); cv::imshow("Canny", image); cv::waitKey(0);*/
 
     collectContourHistogram(outHistogram, histogramCount, contour);
+    totalContourPoints += static_cast<int>(contour.size());
   }
 
   // The histogram must be normalized to avoid
@@ -172,9 +187,11 @@ void writeGradientHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
   // as this could change with scale.
   if (histogramCount != 0) {
     for (int i = 0; i < ch::MATCH_HISTOGRAM_BINS; i++) {
-      outHistogram[i] /= histogramCount;
+      outHistogram[i] /= static_cast<float>(histogramCount);
     }
   }
+
+  hasPiece = totalContourPoints > 200;
 }
 
 /**
@@ -200,7 +217,8 @@ float sadAtOffset(const float histogram1[ch::MATCH_HISTOGRAM_BINS],
 }
 
 ch::PieceIdentifier::PieceIdentifier(std::string calibrationDir) {
-  // TODO: Read from file.
+  this->calibrationDir = calibrationDir;
+  this->loadData();
 }
 
 bool ch::PieceIdentifier::isCalibrated() const { return this->calibrated; }
@@ -211,7 +229,12 @@ ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
   float minScore = std::numeric_limits<float>::max();
 
   float testHistogram[MATCH_HISTOGRAM_BINS];
-  writeGradientHistogram(testHistogram, image);
+  bool hasPiece;
+  writePieceInfo(testHistogram, hasPiece, image);
+
+  if (!hasPiece) {
+    return ch::empty<std::pair<ch::ChessPiece, ch::ChessColor>>();
+  }
 
   for (int pieceIdx = 0; pieceIdx < NUM_PIECE_TYPES; pieceIdx++) {
     // We need to try every orientation of the piece.
@@ -254,11 +277,17 @@ ChessHelper::PieceIdentifier::identifyBoard(const cv::Mat &image) const {
 void ChessHelper::PieceIdentifier::calibrate(
     const cv::Mat allPieces[NUM_PIECE_TYPES]) {
   for (int i = 0; i < NUM_PIECE_TYPES; i++) {
-    writeGradientHistogram(this->histogramsByPiece[i], allPieces[i]);
+    bool hasPiece;
+    writePieceInfo(this->histogramsByPiece[i], hasPiece, allPieces[i]);
+
+    if (!hasPiece) {
+      throw std::runtime_error("Piece " + std::to_string(i) +
+                               " could not be found!");
+    }
   }
 
   this->calibrated = true;
-  // TODO: Write to file.
+  this->saveData();
 }
 
 void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
@@ -284,7 +313,13 @@ void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
   // TODO: Remove.
   for (int i = 0; i < CELLS_PER_SIDE; i++) {
     for (int j = 0; j < CELLS_PER_SIDE; j++) {
-      std::cout << static_cast<int>(identifyPiece(cells[i][j]).first.first);
+      auto piece = this->identifyPiece(cells[i][j]);
+
+      if (piece.second) {
+        std::cout << static_cast<int>(piece.first.first);
+      } else {
+        std::cout << '-';
+      }
     }
 
     std::cout << std::endl;
@@ -319,4 +354,67 @@ ChessHelper::PieceIdentifier::sliceBoard(const cv::Mat &image) {
   }
 
   return cells;
+}
+
+void ChessHelper::PieceIdentifier::loadData() {
+  struct stat dir{};
+  if (stat(this->calibrationDir.c_str(), &dir) != 0) {
+    // Directory doesn't exist, nothing we can load.
+    return;
+  }
+
+  std::string calibrationPath = this->calibrationDir + "/calibration.dat";
+  FILE *calibrationFile = fopen(calibrationPath.c_str(), "rb");
+  if (calibrationFile == nullptr) {
+    // File doesn't exist.
+    return;
+  }
+
+  // SAFETY: To my knowledge, a float array has the exact same
+  //         layout (4 bytes per item, 4 byte alignment, no padding)
+  //         across x86_64 and arm64, and Linux and Windows.
+  fread(&this->histogramsByPiece, sizeof(float),
+        MATCH_HISTOGRAM_BINS * NUM_PIECE_TYPES, calibrationFile);
+
+  fclose(calibrationFile);
+
+  // We're now calibrated.
+  this->calibrated = true;
+}
+
+void ChessHelper::PieceIdentifier::saveData() const {
+  if (!this->calibrated) {
+    throw std::runtime_error(
+        "saveData called on a non-calibrated PieceIdentifier!");
+  }
+
+  struct stat dir{};
+  if (stat(this->calibrationDir.c_str(), &dir) != 0) {
+    // Directory doesn't exist, we need to create it.
+    int nError = 0;
+
+#if defined(_WIN32)
+    nError = _mkdir(this->calibrationDir.c_str());
+#else
+    nError = mkdir(this->calibrationDir.c_str(), 0777);
+#endif
+
+    if (nError != 0) {
+      throw std::runtime_error("Failed to create calibration directory!");
+    }
+  }
+
+  std::string calibrationPath = this->calibrationDir + "/calibration.dat";
+  FILE *calibrationFile = fopen(calibrationPath.c_str(), "wb");
+  if (calibrationFile == nullptr) {
+    throw std::runtime_error("Failed to write into calibration file!");
+  }
+
+  // SAFETY: To my knowledge, a float array has the exact same
+  //         layout (4 bytes per item, 4 byte alignment, no padding)
+  //         across x86_64 and arm64, and Linux and Windows.
+  fwrite(&this->histogramsByPiece, sizeof(float),
+         MATCH_HISTOGRAM_BINS * NUM_PIECE_TYPES, calibrationFile);
+
+  fclose(calibrationFile);
 }

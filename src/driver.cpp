@@ -106,7 +106,7 @@ void commandInterface() {
 
       std::cout << "FEN: " << fen << std::endl;
       std::cout << "Use an online viewer such as "
-                   "https://fujibit.live/chess/fen-viewer/ to visualize."
+                   "https://scriptchess.com/tools/fen-visualizer to visualize."
                 << std::endl;
     } else {
       // Invalid selection.
@@ -152,28 +152,33 @@ void videoInterface() {
 
     // clone the frame so we can use the original for processing and the clone
     // for display (with chess move arrow)
-    cv::Mat displayWithArrow = currFrame.clone();
+    cv::Mat display = currFrame.clone();
 
-    if (debug) {
-      // display used for debugging
-      cv::Mat display;
+    if (!arrowOverlay.empty()) {
+      cv::Mat warpedArrow(arrowOverlay.size(), arrowOverlay.type());
 
-      // corner detection pipeline
-      cv::Mat response = ch::sample(displayWithArrow);
-      std::vector<cv::Point> points = ch::centerCorners(response).first;
-      std::vector<std::vector<cv::Point>> contour = {points};
-      cv::drawContours(displayWithArrow, contour, 0, cv::Scalar(0, 0, 255), 2);
+      cv::warpPerspective(
+          arrowOverlay, warpedArrow, M, arrowOverlay.size(),
+          // We need nearest to prevent it from interpolating
+          // alpha values, since the code below only handles binary
+          // visible vs invisible.
+          // We also need to invert the transformation, since we draw
+          // the arrow in the warped space and want to display it onto
+          // the original camera input.
+          cv::INTER_NEAREST | cv::WARP_INVERSE_MAP);
 
-      std::vector<cv::Mat> images = {displayWithArrow};
+      // Extract the alpha channel, which will only be 0 or 255,
+      // so that we can selectively draw arrow items from it.
+      cv::Mat mask;
+      cv::extractChannel(warpedArrow, mask, 3);
 
-      cv::hconcat(images, display);
-      cv::resizeWindow("Chess Cheater 9000", display.cols, display.rows);
-      cv::imshow("Chess Cheater 9000", display);
-    } else {
-      cv::resizeWindow("Chess Cheater 9000", displayWithArrow.cols,
-                       displayWithArrow.rows);
-      cv::imshow("Chess Cheater 9000", displayWithArrow);
+      // Drop the alpha channel, since display doesn't have one.
+      cv::cvtColor(warpedArrow, warpedArrow, cv::COLOR_BGRA2BGR);
+
+      cv::copyTo(warpedArrow, display, mask);
     }
+
+    cv::imshow("Chess Cheater 9000", display);
 
     int key = cv::waitKey(1);
     if (key == KEY_QUIT) {
@@ -187,6 +192,8 @@ void videoInterface() {
         // if there was an arrow drawn previously then it was drawn for a now
         // outdated board state, so we need to clear it
         arrowOverlay.release();
+        // BGRA
+        arrowOverlay = cv::Mat::zeros(currFrame.size(), CV_8UC4);
 
         // TODO: Maybe draw corner points onto arrowOverlay using inverse(M)?
       } else {
@@ -194,14 +201,11 @@ void videoInterface() {
                   << std::endl;
       }
     } else if (key == KEY_ANALYZE) {
-      analyzeBoard(currFrame, pieceID, M, arrowOverlay);
-    } else if (key == KEY_DEBUG) {
-      debug = !debug;
-
-      if (debug) {
-        std::cout << "Debug mode activated." << std::endl;
+      if (M.empty()) {
+        std::cerr << "Cannot analyze board: press 's' first to find corners."
+                  << std::endl;
       } else {
-        std::cout << "Debug mode deactivated." << std::endl;
+        analyzeBoard(currFrame, pieceID, M, arrowOverlay);
       }
     }
   }
@@ -271,4 +275,35 @@ void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
   }
 
   cv::Mat warped = ch::grayWarp(image, M);
+  auto board = pid.identifyBoard(warped);
+
+  for (int row = 0; row < ch::CELLS_PER_SIDE; row++) {
+    for (int col = 0; col < ch::CELLS_PER_SIDE; col++) {
+      auto piece = board[row][col];
+      if (!piece.second) {
+        continue;
+      }
+
+      auto pieceChar = ch::PIECE_TO_FEN[static_cast<int>(piece.first.first)];
+      std::string pieceText;
+      pieceText += pieceChar;
+
+      cv::putText(
+          arrowOverlay, pieceText,
+          // I had to do a slight offset or else the text would overflow and get
+          // clipped.
+          cv::Point(10 + col * warped.cols / ChessHelper::CELLS_PER_SIDE,
+                    50 + row * warped.rows / ChessHelper::CELLS_PER_SIDE),
+          cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(20, 20, 255, 255), 4);
+    }
+  }
+
+  // TODO: Allow changing color?
+  auto bestMove = ch::findMove(board, 'w');
+  if (!bestMove.second) {
+    std::cerr << "Could not find a move." << std::endl;
+    return;
+  }
+
+  std::cout << "Best move: " << bestMove.first[0] << std::endl;
 }
