@@ -118,11 +118,11 @@ void collectContourHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
  * @param hasPiece is written with whether this cell contains something (not
  *                 empty).
  * @param averageColor is written with the average color of the center of the
- *                     piece.
+ *                     piece as BGR [0, 255].
  * @param image is the image to extract the shape from.
  */
 void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
-                    bool &hasPiece, int &averageColor, const cv::Mat &image) {
+                    bool &hasPiece, int averageColor[3], const cv::Mat &image) {
   if (image.rows != image.cols) {
     throw new std::runtime_error(
         "writeGradientHistogram received a non-square input!");
@@ -133,7 +133,8 @@ void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
   cv::Mat edges;
 
   // Parameters found experimentally.
-  cv::GaussianBlur(image, edges, cv::Size(3, 3), 0.8);
+  cv::cvtColor(image, edges, cv::COLOR_BGR2GRAY);
+  cv::GaussianBlur(edges, edges, cv::Size(3, 3), 0.8);
   cv::Canny(edges, edges, 60, 200);
 
   // This will group lines on the chess board.
@@ -220,7 +221,10 @@ void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
     /*cv::imshow("samplePoints", samplePoints);
     cv::waitKey(0);*/
 
-    averageColor = static_cast<int>(cv::mean(samplePoints)[0]);
+    auto mean = cv::mean(samplePoints);
+    averageColor[0] = static_cast<int>(mean[0]);
+    averageColor[1] = static_cast<int>(mean[1]);
+    averageColor[2] = static_cast<int>(mean[2]);
   }
 }
 
@@ -253,6 +257,14 @@ ch::PieceIdentifier::PieceIdentifier(std::string calibrationDir) {
 
 bool ch::PieceIdentifier::isCalibrated() const { return this->calibrated; }
 
+/**
+ * Returns the square euclidean distance of the two input 3D vectors.
+ */
+int sqrDistance(const int a[3], const int b[3]) {
+  return (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) +
+         (a[2] - b[2]) * (a[2] - b[2]);
+}
+
 ch::Optional<std::pair<ch::ChessPiece, ch::ChessColor>>
 ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
   ChessPiece bestPiece;
@@ -260,7 +272,7 @@ ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
 
   float testHistogram[MATCH_HISTOGRAM_BINS];
   bool hasPiece;
-  int averageColor;
+  int averageColor[3];
   writePieceInfo(testHistogram, hasPiece, averageColor, image);
 
   if (!hasPiece) {
@@ -281,8 +293,8 @@ ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
   }
 
   // Piece color is just the closest average color.
-  ChessColor color = abs(averageColor - this->whiteColor) <
-                             abs(averageColor - this->blackColor)
+  ChessColor color = sqrDistance(averageColor, this->whiteColor) <
+                             sqrDistance(averageColor, this->blackColor)
                          ? ChessColor::White
                          : ChessColor::Black;
 
@@ -312,7 +324,7 @@ void ChessHelper::PieceIdentifier::calibrateShape(
     const cv::Mat allPieces[NUM_PIECE_TYPES]) {
   for (int i = 0; i < NUM_PIECE_TYPES; i++) {
     bool hasPiece;
-    int _averageColor;
+    int _averageColor[3];
     writePieceInfo(this->histogramsByPiece[i], hasPiece, _averageColor,
                    allPieces[i]);
 
@@ -435,8 +447,8 @@ void ChessHelper::PieceIdentifier::loadData() {
         MATCH_HISTOGRAM_BINS * NUM_PIECE_TYPES, calibrationFile);
 
   // SAFETY: int has the same layout between platforms.
-  fread(&this->blackColor, sizeof(int), 1, calibrationFile);
-  fread(&this->whiteColor, sizeof(int), 1, calibrationFile);
+  fread(&this->blackColor, sizeof(int), 3, calibrationFile);
+  fread(&this->whiteColor, sizeof(int), 3, calibrationFile);
 
   fclose(calibrationFile);
 
@@ -479,8 +491,8 @@ void ChessHelper::PieceIdentifier::saveData() const {
          MATCH_HISTOGRAM_BINS * NUM_PIECE_TYPES, calibrationFile);
 
   // SAFETY: int has the same layout between platforms.
-  fwrite(&this->blackColor, sizeof(int), 1, calibrationFile);
-  fwrite(&this->whiteColor, sizeof(int), 1, calibrationFile);
+  fwrite(&this->blackColor, sizeof(int), 3, calibrationFile);
+  fwrite(&this->whiteColor, sizeof(int), 3, calibrationFile);
 
   fclose(calibrationFile);
 }
