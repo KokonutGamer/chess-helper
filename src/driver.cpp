@@ -18,7 +18,8 @@ constexpr int MARGIN = 0; // in pixels
 // -- Keybindings --
 constexpr int KEY_SETUP = 's';
 constexpr int KEY_ANALYZE = ' ';
-constexpr int KEY_QUIT = 27; // this means 'esc' key btw
+constexpr int KEY_QUIT = 27; // 'esc'
+constexpr int KEY_DEBUG = 'd';
 constexpr int ZOOM_IN = '=';
 constexpr int ZOOM_OUT = '-';
 constexpr double ZOOM_STEP = 0.5;
@@ -27,7 +28,8 @@ constexpr double MIN_ZOOM = 1.0;
 
 namespace ch = ChessHelper;
 
-ch::Optional<cv::Mat> setupBoard(const cv::Mat &image);
+ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
+                                 std::vector<cv::Point> *corners = nullptr);
 
 void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
                   const cv::Mat &M, cv::Mat &arrowOverlay);
@@ -132,7 +134,7 @@ void commandInterface() {
  * @param zoom is the zoom level.
  * @return the cropped image.
  */
-cv::Mat zoomFrame(cv::Mat &frame, double zoom) {
+static cv::Mat zoomFrame(cv::Mat &frame, double zoom) {
   if (zoom <= MIN_ZOOM) {
     return frame.clone();
   }
@@ -168,6 +170,7 @@ void videoInterface() {
   cv::Mat M;
   cv::Mat arrowOverlay;
   cv::Mat currFrame;
+  std::vector<cv::Point> boardCorners;
   double zoom = 1.0;
 
   while (true) {
@@ -181,6 +184,12 @@ void videoInterface() {
     // clone the frame so we can use the original for processing and the clone
     // for display (with chess move arrow)
     cv::Mat display = currFrame.clone();
+
+    if (debug && !boardCorners.empty()) {
+      for (const auto &p : boardCorners) {
+        cv::circle(display, p, 5, cv::Scalar(0, 0, 255), 2, cv::FILLED);
+      }
+    }
 
     if (!arrowOverlay.empty()) {
       cv::Mat warpedArrow(arrowOverlay.size(), arrowOverlay.type());
@@ -213,7 +222,8 @@ void videoInterface() {
     if (key == KEY_QUIT) {
       break;
     } else if (key == KEY_SETUP) {
-      auto mat = setupBoard(currFrame);
+      boardCorners.clear();
+      auto mat = setupBoard(currFrame, (debug ? &boardCorners : nullptr));
       if (mat.second) {
         // Success.
         M = mat.first;
@@ -248,6 +258,10 @@ void videoInterface() {
       arrowOverlay.release();
       std::cout << "Make sure to recalibrate after zooming in or out"
                 << std::endl;
+    } else if (key == KEY_DEBUG) {
+      debug = !debug;
+      std::cout << "Debug mode " << (debug ? "activated." : "deactivated.")
+                << std::endl;
     }
   }
 
@@ -260,9 +274,11 @@ void videoInterface() {
  * can be found, returns a perspective transform matrix to make the image
  * contain only the entire chessboard.
  * @param image is the image to analyze.
+ * @param pointer to a vector of points to move corner points to if non-null.
  * @return a perspective transform matrix (or empty if one couldn't be found).
  */
-ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
+ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
+                                 std::vector<cv::Point> *corners) {
   cv::Mat response = ch::sample(image);
   ch::Optional<std::vector<cv::Point>> outer = ch::centerCorners(response);
 
@@ -273,6 +289,10 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
 
   // we need these points as a float for the perspective transform
   std::vector<cv::Point2f> points(outer.first.begin(), outer.first.end());
+
+  if (corners != nullptr) {
+    std::move(points.begin(), points.end(), std::back_inserter(*corners));
+  }
 
   std::cout << "Found corners: " << points[0];
   for (int i = 1; i < points.size(); i++) {
