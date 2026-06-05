@@ -2,39 +2,104 @@
 #include "ChessHelper/utils.h"
 
 /**
- * Offset for response calculation
+ * Offset for response calculation. Let r and c represent a pixel on an image
+ * where adding any offset to either r or c will provide a valid coordinate
+ * within the bounds of the image.
+ *
+ * Adding the offset at index i with r and the offset at index (i + 4) % 16 will
+ * result in a pixel located approximately 5 pixels away from r and c. These
+ * offsets are ordered such that adding them to r and c in the way detailed
+ * previously will traverse a circle starting from the top-most pixel (r - 5, c)
+ * clockwise. This is technique was inspired by the Chess-board Extraction by
+ * Subtraction and Summation detector.
  */
 static constexpr int D[16] = {-5, -5, -4, -2, 0, 2,  4,  5,
                               5,  5,  4,  2,  0, -2, -4, -5};
 
 /**
- * Sum 4 sections, find the diff between 8 sections, and take mean across all 16
- * neighbors around the circle
+ * Dividing the sixteen points of the circle into quarters results in checking
+ * only four neighbors for their "sum response".
  */
 static constexpr int SUM_NUM_NEIGHBORS = 4;
+
+/**
+ * Dividing the sixteen points of the circle into halves results in checking
+ * only eight neighbors for their "diff response".
+ */
 static constexpr int DIFF_NUM_NEIGHBORS = 8;
+
+/**
+ * The total number of neighbors around the sampling circle.
+ */
 static constexpr int NUM_NEIGHBORS = 16;
 
+/**
+ * The gamma correction exponent to apply to a normalized floating-point
+ * grayscale image.
+ */
 static constexpr double CORRECTION_GAMMA = 5.0;
+
+/**
+ * The response threshold used to distinguish predicted corners after gamma
+ * correction.
+ */
 static constexpr double RESPONSE_THRESHOLD = 0.5;
 
 /**
- * TODO document, assumes r and c are already in image (just a helper function)
+ * Casts the byte value from the supplied image into a signed integer. Assumes
+ * the image is an unsigned char grayscale image and r and c are within the
+ * bounds of the image.
+ *
+ * @param image     An image of type CV_8UC1
+ * @param r         The row to retrieve the pixel from
+ * @param c         The column to retrieve the pixel from
+ * @return          The pixel value casted to an integer
  */
 static inline int getInt(const cv::Mat &image, int r, int c) {
   return static_cast<int>(image.at<unsigned char>(r, c));
 }
 
 /**
- * TODO document, assumes r and c are already in image (just a helper function)
+ * Casts the byte value from the supplied image into a double precision
+ * floating-point. Assumes the image is an unsigned char grayscale image and r
+ * and c are within the bounds of the image.
+ *
+ * @param iamge     An image of type CV_8UC1
+ * @param r         The row to retrieve the pixel form
+ * @param c         The column to retrieve the pixel form
+ * @return          The pixel value casted to a double
  */
 static inline double getDouble(const cv::Mat &image, int r, int c) {
   return static_cast<double>(image.at<unsigned char>(r, c));
 }
 
 /**
- * TODO document, image must be grayscale uchar; ASSUME CANDIDATE IS CORRECT
- * DIMENSIONS, CORRECT TYPE AND IMAGE IS NON-NULL AND CORRECT TYPE
+ * Calculates the overall response of the pixel at row r and column c. Three
+ * measurements are used for this computation: sum response, diff response, and
+ * mean response.
+ *
+ * The sum response takes the sum of the absolute values of four sets of four
+ * points. In each set of four points, opposite points are summed together,
+ * while neighbor points (not directly adjacent but to their sides) are
+ * subtracted from these sums. High sum responses result in higher confidence of
+ * a chessboard corner.
+ *
+ * The diff response takes the sum of the absolute difference between opposite
+ * samples. In a chessboard, the pixel values of opposite pixels are likely to
+ * be the same; therefore, this value should be as close to zero as possible.
+ *
+ * The mean response is the absolute difference between the average of all
+ * points around the circle and the average of the five points surrounding the
+ * center. This helps mitigate against stripes that score high on sum response
+ * and low on diff response.
+ *
+ * Assumes the image is an unsigned char grayscale image and r and c are within
+ * the bounds of the image.
+ *
+ * @param image     An image of type CV_8UC1
+ * @param r         The row to retrieve the pixel form
+ * @param c         The column to retrieve the pixel form
+ * @return          The overall response of the pixel at row r and column c
  */
 static double calcResponse(const cv::Mat &image, int r, int c) {
   // note that we can assume all points on the circle will be within the image;
@@ -43,6 +108,8 @@ static double calcResponse(const cv::Mat &image, int r, int c) {
   double sumRes = 0.0;
   double diffRes = 0.0;
   double meanNeighbors = 0.0;
+
+  // iterate over all offsets (points around the circle)
   for (int i = 0; i < NUM_NEIGHBORS; i++) {
     int curr = getInt(image, r + D[i], c + D[(i + 4) % NUM_NEIGHBORS]);
     meanNeighbors += static_cast<double>(curr);
@@ -64,19 +131,32 @@ static double calcResponse(const cv::Mat &image, int r, int c) {
   }
   meanNeighbors /= NUM_NEIGHBORS;
 
+  // average of the center pixels
   double meanLocal = (getDouble(image, r, c) + getDouble(image, r - 1, c) +
                       getDouble(image, r, c + 1) + getDouble(image, r + 1, c) +
                       getDouble(image, r, c - 1)) /
                      5.0;
 
+  // corners usually have lighter tones close to their centers; stripes are more
+  // solid throughout
   double meanRes = std::abs(meanNeighbors - meanLocal);
+
+  // factor of sixteen used to ensure a zero response (more details in paper)
   return sumRes - diffRes - 16 * meanRes;
 }
 
 namespace ChessHelper {
 
 /**
- * TODO document
+ * Execute the sampling algorithm based on Chess-board Extraction by Subtraction
+ * and Summation. Before sampling, a Gaussian blur is used to preprocess the
+ * image to remove noise. After sampling, the response is normalized to
+ * [0.0, 1.0] in order to apply gamma correction.
+ *
+ * @param image     A BGR image of type CV_8UC3
+ * @param ksize     The kernel size of the Gaussian blur
+ * @param sigma     The scale of the Gaussian blur
+ * @return          The response image of type CV_64FC1
  */
 cv::Mat sample(const cv::Mat &image, int ksize, double sigma) {
   if (image.empty()) {
@@ -102,6 +182,29 @@ cv::Mat sample(const cv::Mat &image, int ksize, double sigma) {
   return cand;
 }
 
+/**
+ * Discovers the center of the corners using the response from the sampling
+ * step. A dilation is applied to keep the max responses within a neighbor.
+ * Gamma correction is then used to accentuate high responses while lowering low
+ * ones. Ideally, high-confidence corner candidates stay above a certain
+ * threshold.
+ *
+ * After these first few steps, corner candidates are usually connected
+ * (adjacent) to one another. Connected components are calculated along with
+ * their centroids at their average position.
+ *
+ * To find the the four outer-points of the board (not including the edge
+ * corners), the maximum quadrilateral is taken using the convex hull of the
+ * remaining candidate points. This is approximated using the
+ * Ramer-Douglas–Peucker algorithm (as implemented in approxPolyDP).
+ *
+ * Assumes the response is a double-precision floating-point grayscale image
+ * normalized to [0.0, 1.0].
+ *
+ * @param response      A grayscale image of type CV_64FC1
+ * @return              An Optional containing the four outer-most points if
+ *                          found.
+ */
 Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response) {
   // dilate response image to keep maximums in 5 x 5 neighborhood
   cv::Mat kernel = cv::getStructuringElement(cv::MORPH_DILATE, cv::Size(5, 5));
@@ -140,9 +243,9 @@ Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response) {
   std::vector<cv::Point> hull;
   cv::convexHull(points, hull);
 
-  // we approximate the maximum area quadrilateral using the
-  // Ramer-Douglas–Peucker algorithm; bigger epsilons include more points, while
-  // smaller epsilons include less
+  // approximate the maximum area quadrilateral using the Ramer-Douglas–Peucker
+  // algorithm; bigger epsilons include more points, while smaller epsilons
+  // include less
   std::vector<cv::Point> quad;
   double epsilon = 0.02 * cv::arcLength(hull, true);
   while (true) {
