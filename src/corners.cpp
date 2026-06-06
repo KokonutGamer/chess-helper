@@ -392,7 +392,7 @@ Optional<std::vector<cv::Point2i>> findCorners(cv::Mat &mask) {
   }
 
   // could not find corner candidates
-  if (corners.size() <= 4) {
+  if (corners.size() < 4) {
     return empty<std::vector<cv::Point2i>>();
   }
 
