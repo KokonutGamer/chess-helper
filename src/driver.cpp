@@ -7,26 +7,26 @@
 
 #include <opencv2/opencv.hpp>
 
+#include "ChessHelper/corners.h"
 #include "ChessHelper/utils.h"
 
 #include <numeric>
 
-const int NUM_DOWNSAMPLES = 2;
-const int MARGIN = 0; // in pixels
-
 // -- Keybindings --
-const int KEY_SETUP = 's';
-const int KEY_ANALYZE = ' ';
-const int KEY_QUIT = 27; // this means 'esc' key btw
-const int ZOOM_IN = '=';
-const int ZOOM_OUT = '-';
-const double ZOOM_STEP = 0.5;
-const double MAX_ZOOM = 4.0;
-const double MIN_ZOOM = 1.0;
+constexpr int KEY_SETUP = 's';
+constexpr int KEY_ANALYZE = ' ';
+constexpr int KEY_QUIT = 27; // 'esc'
+constexpr int KEY_DEBUG = 'd';
+constexpr int ZOOM_IN = '=';
+constexpr int ZOOM_OUT = '-';
+constexpr double ZOOM_STEP = 0.5;
+constexpr double MAX_ZOOM = 4.0;
+constexpr double MIN_ZOOM = 1.0;
 
 namespace ch = ChessHelper;
 
-ch::Optional<cv::Mat> setupBoard(const cv::Mat &image);
+ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
+                                 std::vector<cv::Point> *corners = nullptr);
 
 void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
                   const cv::Mat &M, cv::Mat &arrowOverlay);
@@ -35,6 +35,10 @@ void videoInterface();
 
 void commandInterface();
 
+/**
+ * Waits for command-line input from the user before proceeding with image
+ * processing steps.
+ */
 int main() {
   while (true) {
     std::string selection;
@@ -59,8 +63,8 @@ int main() {
 }
 
 /**
- * Gives the user a command-line menu to try
- * the program's functionality.
+ * Provides the user with a command-line menu to try the program's
+ * functionality.
  */
 void commandInterface() {
   ch::PieceIdentifier pieceID("./calibration");
@@ -127,11 +131,12 @@ void commandInterface() {
 
 /**
  * Crops the input frame to the specified zoom level.
- * @param frame is the image to crop.
- * @param zoom is the zoom level.
- * @return the cropped image.
+ *
+ * @param frame     The image to crop.
+ * @param zoom      The zoom level.
+ * @return          The cropped image.
  */
-cv::Mat zoomFrame(cv::Mat &frame, double zoom) {
+static cv::Mat zoomFrame(cv::Mat &frame, double zoom) {
   if (zoom <= MIN_ZOOM) {
     return frame.clone();
   }
@@ -148,14 +153,15 @@ cv::Mat zoomFrame(cv::Mat &frame, double zoom) {
 }
 
 /**
- * Displays an interactive video feed of the board
- * and best moves.
+ * Displays an interactive video feed of the board and best moves.
  */
 void videoInterface() {
-  // -- setup --
+  static bool debug = false;
+
+  // camera setup
   cv::VideoCapture videoCap(0);
   if (!videoCap.isOpened()) {
-    std::cerr << "Could not open your camera." << std::endl;
+    std::cerr << "Could not open camera." << std::endl;
     exit(EXIT_FAILURE);
   }
 
@@ -165,6 +171,7 @@ void videoInterface() {
   cv::Mat M;
   cv::Mat arrowOverlay;
   cv::Mat currFrame;
+  std::vector<cv::Point> boardCorners;
   double zoom = 1.0;
 
   while (true) {
@@ -178,6 +185,12 @@ void videoInterface() {
     // clone the frame so we can use the original for processing and the clone
     // for display (with chess move arrow)
     cv::Mat display = currFrame.clone();
+
+    if (debug && !boardCorners.empty()) {
+      for (const auto &p : boardCorners) {
+        cv::circle(display, p, 5, cv::Scalar(0, 0, 255), 2, cv::FILLED);
+      }
+    }
 
     if (!arrowOverlay.empty()) {
       cv::Mat warpedArrow(arrowOverlay.size(), arrowOverlay.type());
@@ -210,7 +223,8 @@ void videoInterface() {
     if (key == KEY_QUIT) {
       break;
     } else if (key == KEY_SETUP) {
-      auto mat = setupBoard(currFrame);
+      boardCorners.clear();
+      auto mat = setupBoard(currFrame, (debug ? &boardCorners : nullptr));
       if (mat.second) {
         // Success.
         M = mat.first;
@@ -220,8 +234,6 @@ void videoInterface() {
         arrowOverlay.release();
         // BGRA
         arrowOverlay = cv::Mat::zeros(currFrame.size(), CV_8UC4);
-
-        // TODO: Maybe draw corner points onto arrowOverlay using inverse(M)?
       } else {
         std::cerr << "Could not setup board (not all corners could be found)."
                   << std::endl;
@@ -245,6 +257,10 @@ void videoInterface() {
       arrowOverlay.release();
       std::cout << "Make sure to recalibrate after zooming in or out"
                 << std::endl;
+    } else if (key == KEY_DEBUG) {
+      debug = !debug;
+      std::cout << "Debug mode " << (debug ? "activated." : "deactivated.")
+                << std::endl;
     }
   }
 
@@ -256,55 +272,28 @@ void videoInterface() {
  * Extracts the corner points from the input chess board image, and if they
  * can be found, returns a perspective transform matrix to make the image
  * contain only the entire chessboard.
- * @param image is the image to analyze.
- * @return a perspective transform matrix (or empty if one couldn't be found).
+ *
+ * @param image     The image to analyze.
+ * @param corners   A pointer to a vector of points to move corner points to if
+ *                      non-null.
+ * @return          A perspective transform matrix (or empty if one couldn't be
+ *                      found).
  */
-ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
-  cv::Mat grayOriginal;
-  cv::cvtColor(image, grayOriginal, cv::COLOR_BGR2GRAY);
-
-  // found that downsampling is pretty quick and can help with speeding up
-  // computation
-  cv::Mat grayDownscaled = grayOriginal.clone();
-  for (int i = 0; i < NUM_DOWNSAMPLES; i++) {
-    cv::pyrDown(grayDownscaled, grayDownscaled);
-  }
-
-  // use float for harris corner detection; needs to be normalized to work
-  // properly with cv::cornerHarris
-  grayDownscaled.convertTo(grayDownscaled, CV_32F, 1.0 / 255.0);
-
-  // returns CV_32FC1 (32-bit float with one color channel)
-  cv::Mat corners =
-      cv::Mat::zeros(grayDownscaled.size(), grayDownscaled.type());
-  cv::cornerHarris(grayDownscaled, corners, 3, 7, 0.05);
-
-  float max = std::numeric_limits<float>::min();
-  corners.forEach<float>([&](float &pixel, const int *position) {
-    if (pixel > max) {
-      max = pixel;
-    }
-  });
-
-  cv::threshold(corners, corners, max * 0.05, 255, cv::THRESH_BINARY);
-  corners.convertTo(corners, CV_8U);
-
-  ch::Optional<std::vector<cv::Point2i>> outer = ch::findCorners(corners);
+ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
+                                 std::vector<cv::Point> *corners) {
+  cv::Mat response = ch::sample(image);
+  ch::Optional<std::vector<cv::Point>> outer = ch::centerCorners(response);
 
   if (!outer.second) {
     std::cout << "Calibration failed: Could not find corners" << std::endl;
     return ch::empty<cv::Mat>();
   }
 
-  // we need these points as a float for the perspective transform
+  // need points as a float for the perspective transform
   std::vector<cv::Point2f> points(outer.first.begin(), outer.first.end());
-  // This needs to be remapped back to the originally sized
-  // image so we have enough info for piece identification.
-  std::cout << (static_cast<float>(grayOriginal.cols) / grayDownscaled.cols)
-            << std::endl;
-  for (auto &point : points) {
-    point.x *= static_cast<float>(grayOriginal.cols) / grayDownscaled.cols;
-    point.y *= static_cast<float>(grayOriginal.rows) / grayDownscaled.rows;
+
+  if (corners != nullptr) {
+    std::move(points.begin(), points.end(), std::back_inserter(*corners));
   }
 
   std::cout << "Found corners: " << points[0];
@@ -313,13 +302,14 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
   }
   std::cout << std::endl;
 
-  // must match source point order (TL, TR, BL, BR)
+  // must match source point order (BR, TR, TL, BL)
+  float size = static_cast<float>(std::min(image.rows, image.cols));
+  float margin = size * 0.125f;
   std::vector<cv::Point2f> destination = {
-      {MARGIN, MARGIN},
-      {MARGIN, static_cast<float>(grayOriginal.cols - MARGIN - 1)},
-      {static_cast<float>(grayOriginal.rows - MARGIN - 1), MARGIN},
-      {static_cast<float>(grayOriginal.cols - MARGIN - 1),
-       static_cast<float>(grayOriginal.cols - MARGIN - 1)}};
+      {size - margin - 1.0f, size - margin - 1.0f},
+      {margin, size - margin - 1.0f},
+      {margin, margin},
+      {size - margin - 1.0f, margin}};
 
   return ch::value(cv::getPerspectiveTransform(points, destination));
 }
@@ -329,13 +319,15 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image) {
  * and draws an arrow to indicate the move on the screen.
  * If the piece identifier isn't already calibrated, this will abort the
  * program.
- * @param image is the image to identify pieces on. It should be the same
- *              image the perspective transform was extracted from (i.e., not
- *              warped).
- * @param pid is the piece identifier to use (must be calibrated).
- * @param M is the perspective transform matrix to correct the input image.
- * @param arrowOverlay is an image with the same shape as `image`, and which the
- *                     arrow will be drawn into by this function.
+ *
+ * @param image         The image to identify pieces on. It should be the same
+ *                          image the perspective transform was extracted from
+ *                          (i.e., not warped).
+ * @param pid           The piece identifier to use (must be calibrated).
+ * @param M             The perspective transform matrix to correct the input
+ *                          image.
+ * @param arrowOverlay  An image with the same shape as `image`, and which the
+ *                          arrow will be drawn into by this function.
  */
 void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
                   const cv::Mat &M, cv::Mat &arrowOverlay) {
@@ -363,8 +355,7 @@ void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
 
       cv::putText(
           arrowOverlay, pieceText,
-          // I had to do a slight offset or else the text would overflow and get
-          // clipped.
+          // slight offset or else the text would overflows and get clipped
           cv::Point(10 + col * warped.cols / ChessHelper::CELLS_PER_SIDE,
                     50 + row * warped.rows / ChessHelper::CELLS_PER_SIDE),
           cv::FONT_HERSHEY_DUPLEX, 1.0, cv::Scalar(20, 20, 255, 255), 4);
