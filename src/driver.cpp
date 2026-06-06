@@ -25,8 +25,18 @@ constexpr double MIN_ZOOM = 1.0;
 
 namespace ch = ChessHelper;
 
+/**
+ * ========================================
+ * =========== DOCUMENTED LATER ===========
+ * ========================================
+ */
+
 ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
-                                 std::vector<cv::Point> *corners = nullptr);
+                                 std::vector<cv::Point> *corners = nullptr,
+                                 int numDownsamples = 0);
+
+ch::Optional<cv::Mat> setupBoardCmdLine(const cv::Mat &image,
+                                        int numDownsamples = 0);
 
 void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
                   const cv::Mat &M, cv::Mat &arrowOverlay);
@@ -77,7 +87,7 @@ void commandInterface() {
 
     cv::Mat currFrame = cv::imread(selection);
 
-    auto boardRes = setupBoard(currFrame);
+    auto boardRes = setupBoardCmdLine(currFrame, 2);
     if (!boardRes.second) {
       std::cerr << "Could not setup board (not all corners could be found)."
                 << std::endl;
@@ -273,15 +283,23 @@ void videoInterface() {
  * can be found, returns a perspective transform matrix to make the image
  * contain only the entire chessboard.
  *
- * @param image     The image to analyze.
- * @param corners   A pointer to a vector of points to move corner points to if
- *                      non-null.
- * @return          A perspective transform matrix (or empty if one couldn't be
- *                      found).
+ * @param image             The image to analyze.
+ * @param corners           A pointer to a vector of points to move corner
+ *                              points to if non-null.
+ * @param numDownsamples    The number of downsampling operations to perform
+ *                              using pyrDown.
+ * @return                  A perspective transform matrix (or empty if one
+ *                              couldn't be found).
  */
 ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
-                                 std::vector<cv::Point> *corners) {
-  cv::Mat response = ch::sample(image);
+                                 std::vector<cv::Point> *corners,
+                                 int numDownsamples) {
+  cv::Mat downsampled = image.clone();
+  for (int i = 0; i < numDownsamples; i++) {
+    cv::pyrDown(downsampled, downsampled);
+  }
+
+  cv::Mat response = ch::subSumSample(downsampled);
   ch::Optional<std::vector<cv::Point>> outer = ch::centerCorners(response);
 
   if (!outer.second) {
@@ -294,6 +312,10 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
 
   if (corners != nullptr) {
     std::move(points.begin(), points.end(), std::back_inserter(*corners));
+  }
+
+  for (int i = 0; i < points.size(); i++) {
+    points[i] *= std::pow(2, numDownsamples);
   }
 
   std::cout << "Found corners: " << points[0];
@@ -310,6 +332,85 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
       {margin, size - margin - 1.0f},
       {margin, margin},
       {size - margin - 1.0f, margin}};
+
+  return ch::value(cv::getPerspectiveTransform(points, destination));
+}
+
+/**
+ * Extracts the corner points from the input chess board image, and if they
+ * can be found, returns a perspective transform matrix to make the image
+ * contain only the entire chessboard. Implements the legacy algorithm for
+ * detecting the outer-most corners of the board.
+ *
+ * @param image             The image to analyze.
+ * @param numDownsamples    The number of downsampling operations to perform
+ *                              using pyrDown.
+ * @return                  A perspective transform matrix (or empty if one
+ *                              couldn't be found).
+ */
+ch::Optional<cv::Mat> setupBoardCmdLine(const cv::Mat &image,
+                                        int numDownsamples) {
+  cv::Mat grayOriginal;
+  cv::cvtColor(image, grayOriginal, cv::COLOR_BGR2GRAY);
+
+  // found that downsampling is pretty quick and can help with speeding up
+  // computation
+  cv::Mat grayDownscaled = grayOriginal.clone();
+  for (int i = 0; i < numDownsamples; i++) {
+    cv::pyrDown(grayDownscaled, grayDownscaled);
+  }
+
+  // use float for harris corner detection; needs to be normalized to work
+  // properly with cv::cornerHarris
+  grayDownscaled.convertTo(grayDownscaled, CV_32F, 1.0 / 255.0);
+
+  // returns CV_32FC1 (32-bit float with one color channel)
+  cv::Mat corners =
+      cv::Mat::zeros(grayDownscaled.size(), grayDownscaled.type());
+  cv::cornerHarris(grayDownscaled, corners, 3, 7, 0.05);
+
+  float max = std::numeric_limits<float>::min();
+  corners.forEach<float>([&](float &pixel, const int *position) {
+    if (pixel > max) {
+      max = pixel;
+    }
+  });
+
+  cv::threshold(corners, corners, max * 0.05, 255, cv::THRESH_BINARY);
+  corners.convertTo(corners, CV_8U);
+
+  ch::Optional<std::vector<cv::Point2i>> outer = ch::findCorners(corners);
+
+  if (!outer.second) {
+    std::cout << "Calibration failed: Could not find corners" << std::endl;
+    return ch::empty<cv::Mat>();
+  }
+
+  // we need these points as a float for the perspective transform
+  std::vector<cv::Point2f> points(outer.first.begin(), outer.first.end());
+  // This needs to be remapped back to the originally sized
+  // image so we have enough info for piece identification.
+  std::cout << (static_cast<float>(grayOriginal.cols) / grayDownscaled.cols)
+            << std::endl;
+  for (auto &point : points) {
+    point.x *= static_cast<float>(grayOriginal.cols) / grayDownscaled.cols;
+    point.y *= static_cast<float>(grayOriginal.rows) / grayDownscaled.rows;
+  }
+
+  std::cout << "Found corners: " << points[0];
+  for (int i = 1; i < points.size(); i++) {
+    std::cout << ", " << points[i];
+  }
+  std::cout << std::endl;
+
+  // must match source point order (TL, TR, BL, BR)
+  float size = static_cast<float>(std::min(image.rows, image.cols));
+  float margin = 0.0f;
+  std::vector<cv::Point2f> destination = {
+      {margin, margin},
+      {margin, size - margin - 1.0f},
+      {size - margin - 1.0f, margin},
+      {size - margin - 1.0f, size - margin - 1.0f}};
 
   return ch::value(cv::getPerspectiveTransform(points, destination));
 }
@@ -362,7 +463,6 @@ void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
     }
   }
 
-  // TODO: Allow changing color?
   auto bestMove = ch::findMove(board, 'w');
   if (!bestMove.second) {
     std::cerr << "Could not find a move." << std::endl;

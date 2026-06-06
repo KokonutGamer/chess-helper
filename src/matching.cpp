@@ -12,14 +12,15 @@ namespace ch = ChessHelper;
 /**
  * Collects stats about a contour that can be used to
  * eliminate artifacts.
- * @param size is the size of the square image (pixels).
- * @param contour is a set of points along the contour.
- * @param center is the variable to write the center (mean) of the contour in.
- * @param spread is the variable to write the spread in ([0, 1000]),
- *               where the maximum represents a perfect circle at
- *               the center with radius = size/2.
- * @param sqrDistance is the variable to write the mean square distance
- *                    from the center in ([0, 1000]).
+ *
+ * @param size          The size of the square image (pixels).
+ * @param contour       A set of points along the contour.
+ * @param center        The variable to write the mean of the contour in.
+ * @param spread        The variable to write the spread in ([0, 1000]), where
+ *                          the maximum represents a perfect circle at the
+ *                          center with radius = size / 2.
+ * @param sqrDistance   The variable to write the mean square distance from the
+ *                          center in ([0, 1000]).
  */
 void getContourStats(int size, const std::vector<cv::Point> &contour,
                      cv::Point2f &center, int &spread, int &sqrDistance) {
@@ -58,12 +59,13 @@ void getContourStats(int size, const std::vector<cv::Point> &contour,
 }
 
 /**
- * Updates the histogram with information from the contour.
- * For each set of points, this calculates the angle between
- * them, normalizes [0, 180], then counts it in the histogram.
- * @param outHistogram is the histogram to write into.
- * @param histogramCount is incremented for each item added to the histogram.
- * @param contour is the contour to analyze.
+ * Updates the histogram with information from the contour. For each set of
+ * points, this calculates the angle between them, normalizes [0, 180], then
+ * counts it in the histogram.
+ *
+ * @param outHistogram      The histogram to write into.
+ * @param histogramCount    Incremented for each item added to the histogram.
+ * @param contour           The contour to analyze.
  */
 void collectContourHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
                              int &histogramCount,
@@ -105,21 +107,20 @@ void collectContourHistogram(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
  * Computes various information about a cell to identify which piece
  * it contains.
  *
- * Computes a histogram of gradient angles for the chess piece
- * contained in the image, and writes it into outHistogram.
- * This will be a normalized vector.
+ * Computes a histogram of gradient angles for the chess piece contained in the
+ * image, and writes it into outHistogram. This will be a normalized vector.
  *
  * Determines whether there's a piece in the cell.
  *
- * The image must be a square grayscale CV_U8 image of a single
- * chess board cell.
+ * The image must be a square grayscale CV_U8 image of a single chess board
+ * cell.
  *
- * @param outHistogram is the histogram to write into.
- * @param hasPiece is written with whether this cell contains something (not
- *                 empty).
- * @param averageColor is written with the average color of the center of the
- *                     piece as BGR [0, 255].
- * @param image is the image to extract the shape from.
+ * @param outHistogram      The histogram to write into.
+ * @param hasPiece          A boolean written with whether this cell contains
+ *                              something (not empty).
+ * @param averageColor      An array buffer written with the average color of
+ *                              the center of the piece as BGR [0, 255].
+ * @param image             The image to extract the shape from.
  */
 void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
                     bool &hasPiece, int averageColor[3], const cv::Mat &image) {
@@ -233,9 +234,10 @@ void writePieceInfo(float outHistogram[ch::MATCH_HISTOGRAM_BINS],
  * piece histograms at a certain offset (rotation).
  *
  * histogram1[i + offset] is compared against histogram2.
- * @param histogram1 is one of the histograms to compare.
- * @param histogram2 is the other histogram to compare.
- * @param offset is an index offset for histogram1.
+ *
+ * @param histogram1    One of the histograms to compare.
+ * @param histogram2    The other histogram to compare.
+ * @param offset        An index offset for histogram1.
  */
 float sadAtOffset(const float histogram1[ch::MATCH_HISTOGRAM_BINS],
                   const float histogram2[ch::MATCH_HISTOGRAM_BINS],
@@ -301,6 +303,15 @@ ch::PieceIdentifier::identifyPiece(const cv::Mat &image) const {
   return ch::value(std::make_pair(bestPiece, color));
 }
 
+/**
+ * Runs piece identification on every cell in the chess board. The input image
+ * must be a square BGR image (CV_8UC3) containing only the entire chessboard,
+ * with pieces arranged in a default chess configuration.
+ *
+ * @param image   The chess board image to run identification on.
+ * @return        The output board, in board[row][column] order, where empty
+ *                    values represent no piece detected.
+ */
 std::vector<std::vector<ChessHelper::Optional<
     std::pair<ChessHelper::ChessPiece, ChessHelper::ChessColor>>>>
 ChessHelper::PieceIdentifier::identifyBoard(const cv::Mat &image) const {
@@ -320,6 +331,15 @@ ChessHelper::PieceIdentifier::identifyBoard(const cv::Mat &image) const {
   return identifiedCells;
 }
 
+/**
+ * Extracts the shapes of every chess piece and stores
+ * them for later identification (does not mark calibrated as true).
+ *
+ * @param allPieces   A list of images of different chess pieces. Array values
+ *                        are in the same order as ChessPiece (King, Queen,
+ *                        Rook, Bishop, Knight, Pawn). Each image must be a
+ *                        square 8-bit BGR CV_8UC3 image.
+ */
 void ChessHelper::PieceIdentifier::calibrateShape(
     const cv::Mat allPieces[NUM_PIECE_TYPES]) {
   for (int i = 0; i < NUM_PIECE_TYPES; i++) {
@@ -335,6 +355,14 @@ void ChessHelper::PieceIdentifier::calibrateShape(
   }
 }
 
+/**
+ * Extracts the average color from a white and black piece and stores them for
+ * later identification (does not mark calibrated as true). Both input images
+ * must be square 8-bit BGR CV_8UC3 images.
+ *
+ * @param white   An image of the white piece's cell.
+ * @param black   An image of the black piece's cell.
+ */
 void ChessHelper::PieceIdentifier::calibrateColor(const cv::Mat &white,
                                                   const cv::Mat &black) {
   bool hasPiece;
@@ -351,6 +379,16 @@ void ChessHelper::PieceIdentifier::calibrateColor(const cv::Mat &white,
   }
 }
 
+/**
+ * Runs calibration for a starting chess board ad saves the
+ * data to a file.
+ *
+ * The input image must be a square BGR image
+ * (CV_8UC3) containing only the entire chessboard, with pieces
+ * arranged in a default chess configuration.
+ *
+ * @param image   The chess board image to calibrate with.
+ */
 void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
   auto cells = sliceBoard(image);
 
@@ -396,6 +434,14 @@ void ChessHelper::PieceIdentifier::calibrate(const cv::Mat &image) {
   }
 }
 
+/**
+ * Slices a square BGR image (CV_8UC3) containing only
+ * the entire chessboard into individual images for each cell.
+ *
+ * @param image   The chess board image to slice.
+ * @return        A nested array of board cell images, organized as
+ *                    images[row][col].
+ */
 std::vector<std::vector<cv::Mat>>
 ChessHelper::PieceIdentifier::sliceBoard(const cv::Mat &image) {
   if (image.rows != image.cols) {
@@ -426,6 +472,11 @@ ChessHelper::PieceIdentifier::sliceBoard(const cv::Mat &image) {
   return cells;
 }
 
+/**
+ * Loads the data stored in the calibration directory (if it exists).
+ * Skips loading if no data exists.
+ * Aborts the program on failure.
+ */
 void ChessHelper::PieceIdentifier::loadData() {
   struct stat dir{};
   if (stat(this->calibrationDir.c_str(), &dir) != 0) {
@@ -456,6 +507,12 @@ void ChessHelper::PieceIdentifier::loadData() {
   this->calibrated = true;
 }
 
+/**
+ * Saves the calibration data into the calibration directory,
+ * creating it if it doesn't already exist.
+ * Aborts the program on failure, or if the identifier
+ * isn't already calibrated.
+ */
 void ChessHelper::PieceIdentifier::saveData() const {
   if (!this->calibrated) {
     throw std::runtime_error(

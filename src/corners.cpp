@@ -158,7 +158,7 @@ namespace ChessHelper {
  * @param sigma     The scale of the Gaussian blur
  * @return          The response image of type CV_64FC1
  */
-cv::Mat sample(const cv::Mat &image, int ksize, double sigma) {
+cv::Mat subSumSample(const cv::Mat &image, int ksize, double sigma) {
   if (image.empty()) {
     throw std::runtime_error("Image must not be empty.");
   }
@@ -260,6 +260,143 @@ Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response) {
   }
 
   return value<std::vector<cv::Point>>(std::move(quad));
+}
+
+/**
+ * Searches for potential corner candidate in a specified orientation given by
+ * the mapping function. Although it appears to search only in a top-left
+ * fashion, the mapping function makes this implementation versatile to three
+ * other orientations.
+ *
+ * If a corner candidate is found in (what it thinks to be) the top-left
+ * quadrant before the top-right or bottom-left quadrants, this pixel is
+ * selected. Otherwise, it searches the bottom-left and top-right quadrants for
+ * a point and picks the one based on the hyperbolic metric. In the worst-case
+ * scenario, the bottom-right quadrant is selected.
+ *
+ *
+ * @param image     The binary mask image produced by Harris corner detection to
+ *                      search within.
+ * @param minR      The lower bound for row indices (inclusive).
+ * @param maxR      The upper bound for row indices (inclusive).
+ * @param minC      The lower bound for column indices (exclusive).
+ * @param maxC      The upper bound for column indices (exclusive).
+ * @param mapper    The mapping function passed to describe the orientation.
+ * @return          An Optional containing the four outer-most points if found.
+ */
+static Optional<cv::Point2i> findCorner(const cv::Mat &image, int minR,
+                                        int maxR, int minC, int maxC,
+                                        const Mapping &mapper) {
+
+  // Base case, traverses the smallest region to find a value
+  if ((maxR - minR <= 2) && (maxC - minC <= 2)) {
+    for (int r = minR; r < maxR; r++) {
+      for (int c = minC; c < maxC; c++) {
+        cv::Point2i real = mapper(image, r, c);
+        if (image.at<unsigned char>(real.x, real.y) == 255) {
+          cv::Point2i val = {real.x, real.y};
+          return value<cv::Point2i>(std::move(val));
+        }
+      }
+    }
+    return empty<cv::Point2i>();
+  }
+
+  int midR = minR + (maxR - minR) / 2 + 1;
+  int midC = minC + (maxC - minC) / 2 + 1;
+
+  // Because this function maps values (so we don't have to write three other
+  // separate functions to perform the corner matching), the order is what is
+  // expected from a top-left-only implementation.
+
+  // always return the top-left result
+  Optional<cv::Point2i> topLeft =
+      findCorner(image, minR, midR, minC, midC, mapper);
+  if (topLeft.second) {
+    return topLeft;
+  }
+
+  // For top-right and bot-left, we must compare them based on the hyperbolic
+  // metric. This maximizes distance in either x or y while minimizes distance
+  // in the other.
+  Optional<cv::Point2i> topRight =
+      findCorner(image, minR, midR, midC, maxC, mapper);
+  Optional<cv::Point2i> botLeft =
+      findCorner(image, midR, maxR, minC, midC, mapper);
+  if (topRight.second && botLeft.second) {
+    cv::Point2i target = mapper(image, minR, minC);
+
+    int trScore =
+        hyperbolic(topRight.first.x, topRight.first.y, target.x, target.y);
+    int blScore =
+        hyperbolic(botLeft.first.x, botLeft.first.y, target.x, target.y);
+
+    return (trScore > blScore) ? topRight : botLeft;
+  }
+
+  if (topRight.second) {
+    return topRight;
+  }
+
+  if (botLeft.second) {
+    return botLeft;
+  }
+
+  // worst case bottom right (can be null)
+  Optional<cv::Point2i> botRight =
+      findCorner(image, midR, maxR, midC, maxC, mapper);
+  return botRight;
+}
+
+/**
+ * TODO document
+ */
+Optional<std::vector<cv::Point2i>> findCorners(cv::Mat &mask) {
+
+  // assertions (image must be non-empty and 8-bit unsigned)
+  if (mask.empty()) {
+    return empty<std::vector<cv::Point2i>>();
+  }
+
+  if (mask.type() != CV_8U) {
+    return empty<std::vector<cv::Point2i>>();
+  }
+
+  std::vector<cv::Point2i> corners;
+  corners.reserve(4);
+
+  // recursively look for corner candidates within the image (currently looks at
+  // the entire image instead of just the quadrants)
+  Optional<cv::Point2i> topLeftRes =
+      findCorner(mask, 0, mask.rows, 0, mask.cols, &topLeft);
+  if (topLeftRes.second) {
+    corners.push_back(topLeftRes.first);
+  }
+
+  Optional<cv::Point2i> topRightRes =
+      findCorner(mask, 0, mask.rows, 0, mask.cols, &topRight);
+  if (topRightRes.second) {
+    corners.push_back(topRightRes.first);
+  }
+
+  Optional<cv::Point2i> botLeftRes =
+      findCorner(mask, 0, mask.rows, 0, mask.cols, &botLeft);
+  if (botLeftRes.second) {
+    corners.push_back(botLeftRes.first);
+  }
+
+  Optional<cv::Point2i> botRightRes =
+      findCorner(mask, 0, mask.rows, 0, mask.cols, &botRight);
+  if (botRightRes.second) {
+    corners.push_back(botRightRes.first);
+  }
+
+  // could not find corner candidates
+  if (corners.size() < 4) {
+    return empty<std::vector<cv::Point2i>>();
+  }
+
+  return value(std::move(corners));
 }
 
 } // namespace ChessHelper
