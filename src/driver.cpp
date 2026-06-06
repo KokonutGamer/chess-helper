@@ -291,7 +291,7 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
     cv::pyrDown(downsampled, downsampled);
   }
 
-  cv::Mat response = ch::sample(downsampled);
+  cv::Mat response = ch::subSumSample(downsampled);
   ch::Optional<std::vector<cv::Point>> outer = ch::centerCorners(response);
 
   if (!outer.second) {
@@ -443,7 +443,6 @@ void analyzeBoard(const cv::Mat &image, const ch::PieceIdentifier &pid,
     }
   }
 
-  // TODO: Allow changing color?
   auto bestMove = ch::findMove(board, 'w');
   if (!bestMove.second) {
     std::cerr << "Could not find a move." << std::endl;
