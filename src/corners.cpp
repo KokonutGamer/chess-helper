@@ -262,4 +262,113 @@ Optional<std::vector<cv::Point>> centerCorners(const cv::Mat &response) {
   return value<std::vector<cv::Point>>(std::move(quad));
 }
 
+static Optional<cv::Point2i> findCorner(const cv::Mat &image, int minR,
+                                        int maxR, int minC, int maxC,
+                                        const Mapping &mapper) {
+
+  // Base case, traverses the smallest region to find a value
+  if ((maxR - minR <= 2) && (maxC - minC <= 2)) {
+    for (int r = minR; r < maxR; r++) {
+      for (int c = minC; c < maxC; c++) {
+        cv::Point2i real = mapper(image, r, c);
+        if (image.at<unsigned char>(real.x, real.y) == 255) {
+          cv::Point2i val = {real.x, real.y};
+          return value<cv::Point2i>(std::move(val));
+        }
+      }
+    }
+    return empty<cv::Point2i>();
+  }
+
+  int midR = minR + (maxR - minR) / 2 + 1;
+  int midC = minC + (maxC - minC) / 2 + 1;
+
+  // Because this function maps values (so we don't have to write three other
+  // separate functions to perform the corner matching), the order is what is
+  // expected from a top-left-only implementation.
+
+  // always return the top-left result
+  Optional<cv::Point2i> topLeft =
+      findCorner(image, minR, midR, minC, midC, mapper);
+  if (topLeft.second) {
+    return topLeft;
+  }
+
+  // For top-right and bot-left, we must compare them based on the hyperbolic
+  // metric. This maximizes distance in either x or y while minimizes distance
+  // in the other.
+  Optional<cv::Point2i> topRight =
+      findCorner(image, minR, midR, midC, maxC, mapper);
+  Optional<cv::Point2i> botLeft =
+      findCorner(image, midR, maxR, minC, midC, mapper);
+  if (topRight.second && botLeft.second) {
+    cv::Point2i target = mapper(image, minR, minC);
+
+    int trScore =
+        hyperbolic(topRight.first.x, topRight.first.y, target.x, target.y);
+    int blScore =
+        hyperbolic(botLeft.first.x, botLeft.first.y, target.x, target.y);
+
+    return (trScore > blScore) ? topRight : botLeft;
+  }
+
+  if (topRight.second) {
+    return topRight;
+  }
+
+  if (botLeft.second) {
+    return botLeft;
+  }
+
+  // worst case bottom right (can be null)
+  Optional<cv::Point2i> botRight =
+      findCorner(image, midR, maxR, midC, maxC, mapper);
+  return botRight;
+}
+
+Optional<std::vector<cv::Point2i>> findCorners(cv::Mat &image) {
+
+  // assertions (image must be non-empty and 8-bit unsigned)
+  if (image.empty()) {
+    return empty<std::vector<cv::Point2i>>();
+  }
+
+  if (image.type() != CV_8U) {
+    return empty<std::vector<cv::Point2i>>();
+  }
+
+  std::vector<cv::Point2i> corners;
+  corners.reserve(4);
+
+  Optional<cv::Point2i> topLeftRes =
+      findCorner(image, 0, image.rows, 0, image.cols, &topLeft);
+  if (topLeftRes.second) {
+    corners.push_back(topLeftRes.first);
+  }
+
+  Optional<cv::Point2i> topRightRes =
+      findCorner(image, 0, image.rows, 0, image.cols, &topRight);
+  if (topRightRes.second) {
+    corners.push_back(topRightRes.first);
+  }
+
+  Optional<cv::Point2i> botLeftRes =
+      findCorner(image, 0, image.rows, 0, image.cols, &botLeft);
+  if (botLeftRes.second) {
+    corners.push_back(botLeftRes.first);
+  }
+
+  Optional<cv::Point2i> botRightRes =
+      findCorner(image, 0, image.rows, 0, image.cols, &botRight);
+  if (botRightRes.second) {
+    corners.push_back(botRightRes.first);
+  }
+
+  if (corners.empty()) {
+    return empty<std::vector<cv::Point2i>>();
+  }
+
+  return value(std::move(corners));
+}
+
 } // namespace ChessHelper
