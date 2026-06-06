@@ -12,12 +12,15 @@ namespace ChessHelper {
 constexpr char PIECE_TO_FEN[NUM_PIECE_TYPES] = {'K', 'Q', 'R', 'B', 'N', 'P'};
 
 /**
- * Converts a board to a FEN string
- * @param board is the board, formatted as board[row][column], with 8x8=64 total
- *              cells.
- * @param activeColor should be 'b' (black) or 'w' (white), and dictates which
- *                    color the chess engine tries to find the next move for.
- * @return the full FEN string that can be sent to the chess engine.
+ * Converts a board to a FEN string.
+ *
+ * @param board         The board, formatted as board[row][column], with 8x8=64
+ *                          total cells.
+ * @param activeColor   The color ('b'  for black or 'w' for white) which
+ *                          dictates which color the chess engine tries to find
+ *                          the next move for.
+ * @return              The full FEN string that can be sent to the chess
+ *                          engine.
  */
 std::string fenEncode(
     std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board,
@@ -25,12 +28,14 @@ std::string fenEncode(
 
 /**
  * Sends a request to the chess engine API and returns the best move it finds.
- * @param board is the board, formatted as board[row][column], with 8x8=64 total
- * cells.
- * @param activeColor should be 'b' (black) or 'w' (white), and dictates which
- *                    color the chess engine tries to find the next move for.
- * @return the best move as [fromRow, fromCol, toRow, toCol] (or empty if an
- * error occurred).
+ *
+ * @param board         The board, formatted as board[row][column], with 8x8=64
+ *                          total cells.
+ * @param activeColor   The color ('b'  for black or 'w' for white) which
+ *                          dictates which color the chess engine tries to find
+ *                          the next move for.
+ * @return              The best move as [fromRow, fromCol, toRow, toCol] (or
+ *                          empty if an error occurred).
  */
 Optional<std::array<int, 4>> findMove(
     std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board,

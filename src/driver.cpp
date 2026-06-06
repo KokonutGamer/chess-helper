@@ -25,6 +25,12 @@ constexpr double MIN_ZOOM = 1.0;
 
 namespace ch = ChessHelper;
 
+/**
+ * ========================================
+ * =========== DOCUMENTED LATER ===========
+ * ========================================
+ */
+
 ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
                                  std::vector<cv::Point> *corners = nullptr,
                                  int numDownsamples = 0);
@@ -277,11 +283,13 @@ void videoInterface() {
  * can be found, returns a perspective transform matrix to make the image
  * contain only the entire chessboard.
  *
- * @param image     The image to analyze.
- * @param corners   A pointer to a vector of points to move corner points to if
- *                      non-null.
- * @return          A perspective transform matrix (or empty if one couldn't be
- *                      found).
+ * @param image             The image to analyze.
+ * @param corners           A pointer to a vector of points to move corner
+ *                              points to if non-null.
+ * @param numDownsamples    The number of downsampling operations to perform
+ *                              using pyrDown.
+ * @return                  A perspective transform matrix (or empty if one
+ *                              couldn't be found).
  */
 ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
                                  std::vector<cv::Point> *corners,
@@ -328,6 +336,18 @@ ch::Optional<cv::Mat> setupBoard(const cv::Mat &image,
   return ch::value(cv::getPerspectiveTransform(points, destination));
 }
 
+/**
+ * Extracts the corner points from the input chess board image, and if they
+ * can be found, returns a perspective transform matrix to make the image
+ * contain only the entire chessboard. Implements the legacy algorithm for
+ * detecting the outer-most corners of the board.
+ *
+ * @param image             The image to analyze.
+ * @param numDownsamples    The number of downsampling operations to perform
+ *                              using pyrDown.
+ * @return                  A perspective transform matrix (or empty if one
+ *                              couldn't be found).
+ */
 ch::Optional<cv::Mat> setupBoardCmdLine(const cv::Mat &image,
                                         int numDownsamples) {
   cv::Mat grayOriginal;

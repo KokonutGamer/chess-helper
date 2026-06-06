@@ -5,6 +5,17 @@
 
 namespace ch = ChessHelper;
 
+/**
+ * Converts a board to a FEN string.
+ *
+ * @param board         The board, formatted as board[row][column], with 8x8=64
+ *                          total cells.
+ * @param activeColor   The color ('b'  for black or 'w' for white) which
+ *                          dictates which color the chess engine tries to find
+ *                          the next move for.
+ * @return              The full FEN string that can be sent to the chess
+ *                          engine.
+ */
 std::string ChessHelper::fenEncode(
     std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board,
     char activeColor) {
@@ -46,6 +57,17 @@ std::string ChessHelper::fenEncode(
   return result;
 }
 
+/**
+ * Sends a request to the chess engine API and returns the best move it finds.
+ *
+ * @param board         The board, formatted as board[row][column], with 8x8=64
+ *                          total cells.
+ * @param activeColor   The color ('b'  for black or 'w' for white) which
+ *                          dictates which color the chess engine tries to find
+ *                          the next move for.
+ * @return              The best move as [fromRow, fromCol, toRow, toCol] (or
+ *                          empty if an error occurred).
+ */
 ch::Optional<std::array<int, 4>> ChessHelper::findMove(
     std::vector<std::vector<Optional<std::pair<ChessPiece, ChessColor>>>> board,
     char activeColor) {
