@@ -4,6 +4,11 @@ This is a computer vision project to recognize pieces on a chess board. See [ima
 
 ## Usage
 
+This project includes a CMake configuration that should automatically setup the build process. If not, the project needs
+to be setup so that all the files in `src` are compiled together (the main function is in `src/driver.cpp`), and the
+`include` directory is listed as an include path (so that an import such as `#include "ChessHelper/matching.h"`) is
+valid.
+
 This program has two modes: command-line or video. Command-line lets you calibrate the piece detector and analyze still images,
 video uses images taken from your webcam.
 
